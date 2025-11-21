@@ -1,15 +1,12 @@
-# CNS - Chiral Narrative Synthesis
+<div align="center"><img src="assets/cns.svg" width="400" alt="CNS Logo" /></div>
 
-<p align="center">
-  <img src="assets/cns.svg" alt="CNS Logo" width="200" />
-</p>
+# CNS - Chiral Narrative Synthesis
 
 <p align="center">
   <strong>Dialectical Reasoning Framework for Automated Knowledge Discovery</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/North-Shore-AI/cns/actions"><img src="https://img.shields.io/github/actions/workflow/status/North-Shore-AI/cns/ci.yml?branch=main&style=flat-square" alt="CI Status"></a>
   <a href="https://hex.pm/packages/cns"><img src="https://img.shields.io/hexpm/v/cns.svg?style=flat-square" alt="Hex.pm"></a>
   <a href="https://hexdocs.pm/cns"><img src="https://img.shields.io/badge/hex-docs-purple.svg?style=flat-square" alt="Documentation"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat-square" alt="License"></a>

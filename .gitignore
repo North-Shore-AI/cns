@@ -1,0 +1,49 @@
+# Mix artifacts
+/_build/
+/deps/
+/cover/
+/doc/
+/tmp/
+/priv/static/
+
+# Erlang/Elixir metadata
+*.beam
+*.ez
+.erlang.cookie
+.elixir_ls/
+
+# Tooling and test output
+/.fetch
+erl_crash.dump
+*.coverdata
+*.plt
+*.plt.hash
+/.dialyzer_ignore.exs
+/test-coverage/
+
+# Logs and temp files
+/log/
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Secrets and configs
+config/*.secret.exs
+config/*secret.exs
+config/dev.local.exs
+config/dev.secret.exs
+config/test.local.exs
+config/test.secret.exs
+
+# Node assets (Phoenix / assets pipeline)
+/assets/node_modules/
+/assets/package-lock.json
+assets/build/
+
+# Misc editors/OS
+.DS_Store
+*.orig
+*.bak
+.idea/
+.vscode/
