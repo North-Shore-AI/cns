@@ -185,14 +185,15 @@ defmodule CNS.Graph.Topology do
   # Private functions
 
   defp longest_path_from(graph, start) do
-    do_longest_path(graph, start, MapSet.new(), 0)
+    do_longest_path(graph, start, %{}, 0)
   end
 
-  defp do_longest_path(graph, current, visited, depth) do
-    if MapSet.member?(visited, current) do
+  @spec do_longest_path(Graph.t(), any(), map(), non_neg_integer()) :: non_neg_integer()
+  defp do_longest_path(graph, current, visited, depth) when is_map(visited) do
+    if Map.has_key?(visited, current) do
       depth
     else
-      new_visited = MapSet.put(visited, current)
+      new_visited = Map.put(visited, current, true)
       neighbors = Graph.out_neighbors(graph, current)
 
       if Enum.empty?(neighbors) do

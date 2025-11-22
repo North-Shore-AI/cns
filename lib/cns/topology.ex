@@ -155,10 +155,10 @@ defmodule CNS.Topology do
 
       if Enum.empty?(roots) do
         # Graph has cycles, use any node
-        max_depth_from(graph, hd(nodes), MapSet.new())
+        max_depth_from(graph, hd(nodes), %{})
       else
         # Calculate max depth from all roots
-        Enum.map(roots, &max_depth_from(graph, &1, MapSet.new()))
+        Enum.map(roots, &max_depth_from(graph, &1, %{}))
         |> Enum.max(fn -> 0 end)
       end
     end
@@ -354,14 +354,14 @@ defmodule CNS.Topology do
     after_min ++ before
   end
 
-  @spec max_depth_from(map(), String.t(), MapSet.t()) :: non_neg_integer()
-  defp max_depth_from(graph, node, visited) do
+  @spec max_depth_from(map(), String.t(), map()) :: non_neg_integer()
+  defp max_depth_from(graph, node, visited) when is_map(visited) do
     cond do
       # Safety limit
-      MapSet.size(visited) > 1000 ->
+      map_size(visited) > 1000 ->
         0
 
-      MapSet.member?(visited, node) ->
+      Map.has_key?(visited, node) ->
         0
 
       true ->
@@ -370,7 +370,7 @@ defmodule CNS.Topology do
         if Enum.empty?(children) do
           0
         else
-          new_visited = MapSet.put(visited, node)
+          new_visited = Map.put(visited, node, true)
 
           child_depths =
             Enum.map(children, &max_depth_from(graph, &1, new_visited))

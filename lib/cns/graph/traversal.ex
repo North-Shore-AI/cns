@@ -39,7 +39,7 @@ defmodule CNS.Graph.Traversal do
   """
   @spec shortest_path(Graph.t(), any(), any()) :: [any()] | nil
   def shortest_path(graph, from, to) do
-    Graph.dijkstra(graph, from, to)
+    Graph.Pathfinding.dijkstra(graph, from, to)
   end
 
   @doc """

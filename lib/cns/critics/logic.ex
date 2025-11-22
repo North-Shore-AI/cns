@@ -189,7 +189,7 @@ defmodule CNS.Critics.Logic do
     nodes = Map.keys(edges)
 
     Enum.reduce(nodes, [], fn node, cycles ->
-      if has_cycle?(edges, node, node, MapSet.new()) do
+      if has_cycle?(edges, node, node, %{}) do
         [node | cycles]
       else
         cycles
@@ -197,20 +197,19 @@ defmodule CNS.Critics.Logic do
     end)
   end
 
-  defp has_cycle?(_edges, _start, _current, _visited) when map_size(%{}) == 0, do: false
-
-  defp has_cycle?(edges, start, current, visited) do
+  @spec has_cycle?(map(), any(), any(), map()) :: boolean()
+  defp has_cycle?(edges, start, current, visited) when is_map(visited) do
     neighbors = Map.get(edges, current, [])
 
     cond do
-      start in neighbors and MapSet.size(visited) > 0 ->
+      start in neighbors and map_size(visited) > 0 ->
         true
 
-      MapSet.member?(visited, current) ->
+      Map.has_key?(visited, current) ->
         false
 
       true ->
-        new_visited = MapSet.put(visited, current)
+        new_visited = Map.put(visited, current, true)
 
         Enum.any?(neighbors, fn neighbor ->
           has_cycle?(edges, start, neighbor, new_visited)
