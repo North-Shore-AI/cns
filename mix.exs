@@ -78,7 +78,7 @@ defmodule CNS.MixProject do
         "Docs" => "https://hexdocs.pm/cns"
       },
       maintainers: ["North-Shore-AI"],
-      files: ~w(lib .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
+      files: ~w(lib docs .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
     ]
   end
 
@@ -90,10 +90,22 @@ defmodule CNS.MixProject do
       source_url: @source_url,
       extras: [
         "README.md",
-        "docs/20251121/architecture.md",
-        "docs/20251121/api_reference.md",
-        "docs/20251121/training_guide.md",
-        "docs/20251121/getting_started.md"
+        "docs/guides/getting_started.md",
+        "docs/guides/claim_parsing.md",
+        "docs/guides/topology_analysis.md",
+        "docs/guides/validation_pipeline.md",
+        "docs/guides/data_pipeline.md",
+        "docs/guides/api_reference.md"
+      ],
+      groups_for_extras: [
+        Guides: [
+          "docs/guides/getting_started.md",
+          "docs/guides/claim_parsing.md",
+          "docs/guides/topology_analysis.md",
+          "docs/guides/validation_pipeline.md",
+          "docs/guides/data_pipeline.md",
+          "docs/guides/api_reference.md"
+        ]
       ],
       groups_for_modules: [
         "Core Types": [
@@ -102,17 +114,30 @@ defmodule CNS.MixProject do
           CNS.Challenge,
           CNS.Provenance
         ],
+        "Schema & Parsing": [
+          CNS.Schema.Parser
+        ],
+        "Logic & Topology": [
+          CNS.Logic.Betti,
+          CNS.Topology
+        ],
+        Metrics: [
+          CNS.Metrics.Chirality,
+          CNS.Metrics
+        ],
+        Validation: [
+          CNS.Validation.Semantic
+        ],
         Pipeline: [
+          CNS.Pipeline.Schema,
+          CNS.Pipeline.Converters,
           CNS.Proposer,
           CNS.Antagonist,
           CNS.Synthesizer,
           CNS.Pipeline
         ],
-        Metrics: [
-          CNS.Metrics,
-          CNS.Topology
-        ],
         Training: [
+          CNS.Training.Evaluation,
           CNS.Training
         ],
         Configuration: [
