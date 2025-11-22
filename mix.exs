@@ -51,6 +51,8 @@ defmodule CNS.MixProject do
       {:jason, "~> 1.4"},
       {:nimble_parsec, "~> 1.4"},
       {:uuid, "~> 1.1"},
+      {:libgraph, "~> 0.16"},
+      {:telemetry, "~> 1.2"},
 
       # Optional: Tinkex integration (umbrella sibling)
       # {:tinkex, in_umbrella: true, optional: true},
