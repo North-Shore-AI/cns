@@ -46,7 +46,14 @@ defmodule CNS.Validation.ModelLoader do
   Check if models are enabled (can be disabled for testing).
   """
   def models_enabled? do
-    Application.get_env(:cns, :enable_ml_models, true)
+    Application.get_env(:cns, :enable_ml_models, true) and bumblebee_available?()
+  end
+
+  @doc """
+  Check if Bumblebee is available (optional dependency).
+  """
+  def bumblebee_available? do
+    Code.ensure_loaded?(Bumblebee)
   end
 
   @doc """
@@ -160,46 +167,54 @@ defmodule CNS.Validation.ModelLoader do
   # Private Functions
 
   defp load_nli_model do
-    try do
-      {:ok, model_info} =
-        Bumblebee.load_model({:hf, @nli_model_repo},
-          architecture: :for_sequence_classification
-        )
+    if bumblebee_available?() do
+      try do
+        {:ok, model_info} =
+          Bumblebee.load_model({:hf, @nli_model_repo},
+            architecture: :for_sequence_classification
+          )
 
-      {:ok, tokenizer} = Bumblebee.load_tokenizer({:hf, @nli_model_repo})
+        {:ok, tokenizer} = Bumblebee.load_tokenizer({:hf, @nli_model_repo})
 
-      # Use standard NLI text classification; model outputs entailment/neutral/contradiction
-      serving =
-        Bumblebee.Text.text_classification(model_info, tokenizer,
-          compile: [batch_size: 1, sequence_length: 512],
-          defn_options: [compiler: EXLA]
-        )
+        # Use standard NLI text classification; model outputs entailment/neutral/contradiction
+        serving =
+          Bumblebee.Text.text_classification(model_info, tokenizer,
+            compile: [batch_size: 1, sequence_length: 512],
+            defn_options: [compiler: EXLA]
+          )
 
-      {:ok, serving}
-    rescue
-      e ->
-        {:error, Exception.message(e)}
+        {:ok, serving}
+      rescue
+        e ->
+          {:error, Exception.message(e)}
+      end
+    else
+      {:error, :bumblebee_not_available}
     end
   end
 
   defp load_embedding_model do
-    try do
-      {:ok, model_info} = Bumblebee.load_model({:hf, @embedding_model_repo})
-      {:ok, tokenizer} = Bumblebee.load_tokenizer({:hf, @embedding_model_repo})
+    if bumblebee_available?() do
+      try do
+        {:ok, model_info} = Bumblebee.load_model({:hf, @embedding_model_repo})
+        {:ok, tokenizer} = Bumblebee.load_tokenizer({:hf, @embedding_model_repo})
 
-      # Create serving for text embedding
-      serving =
-        Bumblebee.Text.text_embedding(model_info, tokenizer,
-          compile: [batch_size: 2, sequence_length: 256],
-          defn_options: [compiler: EXLA],
-          output_pool: :mean_pooling,
-          output_attribute: :hidden_state
-        )
+        # Create serving for text embedding
+        serving =
+          Bumblebee.Text.text_embedding(model_info, tokenizer,
+            compile: [batch_size: 2, sequence_length: 256],
+            defn_options: [compiler: EXLA],
+            output_pool: :mean_pooling,
+            output_attribute: :hidden_state
+          )
 
-      {:ok, serving}
-    rescue
-      e ->
-        {:error, Exception.message(e)}
+        {:ok, serving}
+      rescue
+        e ->
+          {:error, Exception.message(e)}
+      end
+    else
+      {:error, :bumblebee_not_available}
     end
   end
 end
