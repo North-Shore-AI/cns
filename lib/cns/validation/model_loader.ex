@@ -52,11 +52,10 @@ defmodule CNS.Validation.ModelLoader do
   @doc """
   Get the NLI model for entailment scoring.
 
-  Returns {:ok, {model, tokenizer}} on success.
+  Returns {:ok, serving} on success.
   Loads the model lazily on first call.
   """
-  @spec get_nli_model() ::
-          {:ok, {Axon.t(), Bumblebee.Text.PreTrainedTokenizer.t()}} | {:error, term()}
+  @spec get_nli_model() :: {:ok, Nx.Serving.t()} | {:error, term()}
   def get_nli_model do
     if models_enabled?() do
       GenServer.call(__MODULE__, :get_nli_model, :infinity)
@@ -169,10 +168,9 @@ defmodule CNS.Validation.ModelLoader do
 
       {:ok, tokenizer} = Bumblebee.load_tokenizer({:hf, @nli_model_repo})
 
-      # Use zero-shot classification for NLI
-      # Labels will be: entailment, neutral, contradiction
+      # Use standard NLI text classification; model outputs entailment/neutral/contradiction
       serving =
-        Bumblebee.Text.zero_shot_classification(model_info, tokenizer,
+        Bumblebee.Text.text_classification(model_info, tokenizer,
           compile: [batch_size: 1, sequence_length: 512],
           defn_options: [compiler: EXLA]
         )

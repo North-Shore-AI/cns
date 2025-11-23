@@ -328,7 +328,7 @@ defmodule CNS.Validation.Semantic do
 
   Returns a score from 0.0 to 1.0 where higher means stronger entailment.
   """
-  @spec compute_entailment(String.t(), String.t(), MapSet.t(String.t())) :: float()
+  @spec compute_entailment(String.t(), map(), MapSet.t(String.t())) :: float()
   def compute_entailment(claim, corpus, cited_ids) do
     evidence_text = get_evidence_text(cited_ids, corpus)
 
@@ -362,17 +362,8 @@ defmodule CNS.Validation.Semantic do
   def compute_nli_entailment(premise, hypothesis) do
     case ModelLoader.get_nli_model() do
       {:ok, serving} ->
-        # For zero-shot classification, we provide:
-        # - The premise as the text to classify
-        # - The hypothesis as the label to check
-        # This asks: "Does premise entail hypothesis?"
-        input = %{
-          text: premise,
-          labels: ["entailment: #{hypothesis}", "contradiction", "neutral"]
-        }
-
-        # Run inference
-        result = Nx.Serving.run(serving, input)
+        # NLI model expects a pair of (premise, hypothesis)
+        result = Nx.Serving.run(serving, {premise, hypothesis})
 
         # Extract entailment probability
         entailment_score = extract_entailment_score(result)
