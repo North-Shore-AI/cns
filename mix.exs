@@ -54,6 +54,10 @@ defmodule CNS.MixProject do
       {:libgraph, "~> 0.16"},
       {:telemetry, "~> 1.2"},
 
+      # ML/NLP dependencies for semantic validation
+      {:bumblebee, "~> 0.5"},
+      {:exla, "~> 0.7"},
+
       # Optional: Tinkex integration (umbrella sibling)
       # {:tinkex, in_umbrella: true, optional: true},
 

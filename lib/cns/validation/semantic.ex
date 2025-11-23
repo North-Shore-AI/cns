@@ -4,10 +4,30 @@ defmodule CNS.Validation.Semantic do
 
   Stages:
   1. Citation Accuracy - Hard gate for document ID verification
-  2. Entailment Scoring - NLI-based evidence entailment
-  3. Semantic Similarity - Text similarity scoring
+  2. Entailment Scoring - NLI-based evidence entailment (DeBERTa-v3)
+  3. Semantic Similarity - Embedding-based text similarity (MiniLM)
   4. Paraphrase Tolerance - Accept valid rephrasings
+
+  ## Model Integration
+
+  When Bumblebee models are available (via `CNS.Validation.ModelLoader`),
+  this module uses real transformer-based inference:
+
+  - **Entailment**: DeBERTa-v3-base NLI model for entailment/neutral/contradiction
+  - **Similarity**: all-MiniLM-L6-v2 for cosine similarity of sentence embeddings
+
+  When models are not available, it falls back to word-overlap heuristics.
+
+  ## Usage
+
+      config = %CNS.Validation.Semantic.Config{}
+      result = CNS.Validation.Semantic.validate_claim(
+        config, generated_claim, gold_claim, full_output, corpus, gold_ids
+      )
   """
+
+  require Logger
+  alias CNS.Validation.ModelLoader
 
   defmodule ValidationResult do
     @moduledoc "Result of semantic validation pipeline"
@@ -117,10 +137,12 @@ defmodule CNS.Validation.Semantic do
   end
 
   @doc """
-  Compute text similarity using word overlap (Jaccard-like).
+  Compute semantic similarity between two texts.
 
-  This is a simple similarity metric. For production use,
-  integrate with embedding-based similarity.
+  When embedding models are available, uses cosine similarity of
+  sentence embeddings from all-MiniLM-L6-v2.
+
+  Falls back to word overlap (Jaccard) when models aren't loaded.
 
   ## Examples
 
@@ -129,6 +151,62 @@ defmodule CNS.Validation.Semantic do
   """
   @spec compute_similarity(String.t(), String.t()) :: float()
   def compute_similarity(text_a, text_b) do
+    case compute_embedding_similarity(text_a, text_b) do
+      {:ok, score} ->
+        score
+
+      {:error, _reason} ->
+        # Fallback to word overlap
+        compute_word_overlap_similarity(text_a, text_b)
+    end
+  end
+
+  @doc """
+  Compute embedding-based similarity using MiniLM model.
+
+  Returns {:ok, score} or {:error, reason}.
+  """
+  @spec compute_embedding_similarity(String.t(), String.t()) :: {:ok, float()} | {:error, term()}
+  def compute_embedding_similarity(text_a, text_b) do
+    if String.length(text_a) == 0 or String.length(text_b) == 0 do
+      {:ok, 0.0}
+    else
+      case ModelLoader.get_embedding_model() do
+        {:ok, serving} ->
+          # Get embeddings for both texts
+          %{embedding: embedding_a} = Nx.Serving.run(serving, text_a)
+          %{embedding: embedding_b} = Nx.Serving.run(serving, text_b)
+
+          # Compute cosine similarity
+          similarity = cosine_similarity(embedding_a, embedding_b)
+          {:ok, max(0.0, min(1.0, similarity))}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  rescue
+    e ->
+      {:error, Exception.message(e)}
+  end
+
+  defp cosine_similarity(a, b) do
+    # Flatten to 1D tensors
+    a_flat = Nx.flatten(a)
+    b_flat = Nx.flatten(b)
+
+    dot = Nx.dot(a_flat, b_flat) |> Nx.to_number()
+    norm_a = Nx.LinAlg.norm(a_flat) |> Nx.to_number()
+    norm_b = Nx.LinAlg.norm(b_flat) |> Nx.to_number()
+
+    if norm_a == 0 or norm_b == 0 do
+      0.0
+    else
+      dot / (norm_a * norm_b)
+    end
+  end
+
+  defp compute_word_overlap_similarity(text_a, text_b) do
     words_a = tokenize(text_a)
     words_b = tokenize(text_b)
 
@@ -188,9 +266,8 @@ defmodule CNS.Validation.Semantic do
     if not citation_valid do
       failed_result(citation_valid, cited_ids, missing_ids)
     else
-      # Stage 2: Entailment (placeholder - returns high score for now)
-      # In production, integrate with NLI model
-      entailment_score = compute_entailment_placeholder(generated_claim, corpus, cited_ids)
+      # Stage 2: Entailment (NLI model or fallback)
+      entailment_score = compute_entailment(generated_claim, corpus, cited_ids)
       entailment_pass = entailment_score >= config.entailment_threshold
 
       # Stage 3: Semantic Similarity
@@ -241,23 +318,109 @@ defmodule CNS.Validation.Semantic do
     }
   end
 
-  # Placeholder for entailment scoring
-  # In production, integrate with Bumblebee NLI model
-  defp compute_entailment_placeholder(claim, corpus, cited_ids) do
+  @doc """
+  Compute entailment score between evidence and claim.
+
+  When NLI model is available, uses DeBERTa-v3-base to classify
+  whether evidence entails the claim.
+
+  Falls back to word overlap heuristic when model isn't loaded.
+
+  Returns a score from 0.0 to 1.0 where higher means stronger entailment.
+  """
+  @spec compute_entailment(String.t(), String.t(), MapSet.t(String.t())) :: float()
+  def compute_entailment(claim, corpus, cited_ids) do
     evidence_text = get_evidence_text(cited_ids, corpus)
 
-    if String.length(evidence_text) > 0 and String.length(claim) > 0 do
-      # Simple heuristic: word overlap as proxy for entailment
-      compute_similarity(claim, evidence_text)
-    else
+    if String.length(evidence_text) == 0 or String.length(claim) == 0 do
       0.0
+    else
+      case compute_nli_entailment(evidence_text, claim) do
+        {:ok, score} ->
+          score
+
+        {:error, _reason} ->
+          # Fallback to word overlap
+          compute_word_overlap_similarity(claim, evidence_text)
+      end
     end
   end
+
+  @doc """
+  Compute NLI-based entailment using DeBERTa model.
+
+  Args:
+    - premise: The evidence text
+    - hypothesis: The claim to verify
+
+  Returns {:ok, entailment_probability} or {:error, reason}.
+
+  The model outputs probabilities for [contradiction, neutral, entailment].
+  We return the entailment probability.
+  """
+  @spec compute_nli_entailment(String.t(), String.t()) :: {:ok, float()} | {:error, term()}
+  def compute_nli_entailment(premise, hypothesis) do
+    case ModelLoader.get_nli_model() do
+      {:ok, serving} ->
+        # For zero-shot classification, we provide:
+        # - The premise as the text to classify
+        # - The hypothesis as the label to check
+        # This asks: "Does premise entail hypothesis?"
+        input = %{
+          text: premise,
+          labels: ["entailment: #{hypothesis}", "contradiction", "neutral"]
+        }
+
+        # Run inference
+        result = Nx.Serving.run(serving, input)
+
+        # Extract entailment probability
+        entailment_score = extract_entailment_score(result)
+        {:ok, entailment_score}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  rescue
+    e ->
+      {:error, Exception.message(e)}
+  end
+
+  defp extract_entailment_score(%{predictions: predictions}) do
+    # Find the entailment label and its score
+    entailment_pred =
+      Enum.find(predictions, fn pred ->
+        label = String.downcase(pred.label)
+        String.contains?(label, "entailment")
+      end)
+
+    case entailment_pred do
+      nil -> 0.0
+      pred -> pred.score
+    end
+  end
+
+  defp extract_entailment_score(_), do: 0.0
 
   defp get_evidence_text(doc_ids, corpus) do
     doc_ids
     |> Enum.map(&Map.get(corpus, &1, %{}))
-    |> Enum.map(&Map.get(&1, "text", ""))
+    |> Enum.flat_map(fn doc ->
+      # Support both "text" and "abstract" fields
+      text = Map.get(doc, "text", "")
+      abstract = Map.get(doc, "abstract", "")
+      title = Map.get(doc, "title", "")
+
+      abstract_text =
+        case abstract do
+          list when is_list(list) -> Enum.join(list, " ")
+          str when is_binary(str) -> str
+          _ -> ""
+        end
+
+      [title, abstract_text, text]
+      |> Enum.reject(&(&1 == ""))
+    end)
     |> Enum.join(" ")
   end
 end

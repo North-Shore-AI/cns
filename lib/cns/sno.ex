@@ -340,6 +340,44 @@ defmodule CNS.SNO do
     |> length()
   end
 
+  @doc """
+  Add topological metrics to SNO metadata.
+
+  ## Parameters
+    - sno: The SNO struct
+    - topology: Map with :beta1, :cycle_count, :polarity_conflict
+
+  ## Examples
+
+      iex> sno = CNS.SNO.new("Test")
+      iex> updated = CNS.SNO.with_topology(sno, %{beta1: 1, cycle_count: 2, polarity_conflict: false})
+      iex> updated.metadata.topology.beta1
+      1
+  """
+  @spec with_topology(t(), map()) :: t()
+  def with_topology(%__MODULE__{} = sno, topology) when is_map(topology) do
+    %{sno | metadata: Map.put(sno.metadata, :topology, topology)}
+  end
+
+  @doc """
+  Add chirality metrics to SNO metadata.
+
+  ## Parameters
+    - sno: The SNO struct
+    - chirality: Map with :score, :evidence_overlap, :norm_distance
+
+  ## Examples
+
+      iex> sno = CNS.SNO.new("Test")
+      iex> updated = CNS.SNO.with_chirality(sno, %{score: 0.55, evidence_overlap: 0.2, norm_distance: 0.8})
+      iex> updated.metadata.chirality.score
+      0.55
+  """
+  @spec with_chirality(t(), map()) :: t()
+  def with_chirality(%__MODULE__{} = sno, chirality) when is_map(chirality) do
+    %{sno | metadata: Map.put(sno.metadata, :chirality, chirality)}
+  end
+
   # Private functions
 
   defp validate_claim(errors, %{claim: claim}) when is_binary(claim) and byte_size(claim) > 0 do
