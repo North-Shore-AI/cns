@@ -227,7 +227,7 @@ CNS.Supervisor
 | `TopologyValidator` | `CNS.Topology.Analyzer` | GenServer with Nx |
 | `FisherMetric` | `CNS.Fisher.Metric` | Nx-based computation |
 | Dataset loading | `Crucible.Datasets` | Via crucible_datasets |
-| Training loop | `Crucible.Lora.TrainingLoop` | Via crucible_framework |
+| Training loop | `CrucibleFramework` pipeline (backend_call) | Via cns_experiments adapters |
 
 ### Key Differences
 
@@ -363,21 +363,25 @@ score = CNS.Critics.aggregate_score(results)
 ### Training CNS Models
 
 ```elixir
-# Use Crucible for LoRA fine-tuning
-{:ok, experiment} = Crucible.Lora.create_experiment(
-  name: "CNS Synthesis Model",
-  config: %{
-    base_model: "llama-3-8b",
-    lora_rank: 16
-  }
-)
+# Build Crucible IR experiment (handled in cns_experiments)
+experiment = %Crucible.IR.Experiment{
+  id: "cns_scifact",
+  dataset: %Crucible.IR.DatasetRef{name: "scifact", options: %{input_key: :prompt, output_key: :completion}},
+  pipeline: [
+    %Crucible.IR.StageDef{name: :data_load},
+    %Crucible.IR.StageDef{name: :data_checks},
+    %Crucible.IR.StageDef{name: :guardrails},
+    %Crucible.IR.StageDef{name: :backend_call},
+    %Crucible.IR.StageDef{name: :cns_surrogate_validation},
+    %Crucible.IR.StageDef{name: :cns_tda_validation},
+    %Crucible.IR.StageDef{name: :cns_metrics},
+    %Crucible.IR.StageDef{name: :bench},
+    %Crucible.IR.StageDef{name: :report}
+  ],
+  backend: %Crucible.IR.BackendRef{id: :tinkex, profile: :lora_finetune}
+}
 
-# Train with CNS-specific loss
-{:ok, results} = Crucible.Lora.TrainingLoop.run(
-  session, :scifact,
-  loss_fn: cns_composite_loss(),
-  enable_gradient_hooks: true
-)
+{:ok, ctx} = CrucibleFramework.run(experiment)
 ```
 
 ### Running CNS Experiments

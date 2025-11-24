@@ -5,6 +5,10 @@
 **Duration:** Multi-week intensive development
 **Strategy:** Parallel multi-agent development with iterative review cycles
 
+> Note: The legacy `CNS.CrucibleAdapter` and `lib/cns/crucible_contracts/*`
+> modules have been removed. Crucible integration now lives in the
+> `cns_experiments` app via `CnsExperiments.Adapters.*` behaviours.
+
 ---
 
 ## Executive Summary
