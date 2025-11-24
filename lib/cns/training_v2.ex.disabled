@@ -1,0 +1,586 @@
+defmodule CNS.TrainingV2 do
+  @moduledoc """
+  Training integration for CNS with Crucible IR and Tinkex LoRA fine-tuning.
+
+  This is the refactored version that uses Crucible IR instead of legacy contracts.
+
+  Provides utilities for:
+  - Dataset preparation for dialectical training
+  - Building Crucible Experiment IR for CNS training
+  - Training loop management via CrucibleFramework
+  - Checkpoint handling
+  - Evaluation and reporting
+
+  ## Migration from CNS.Training
+
+  Old approach:
+  ```elixir
+  {:ok, dataset} = CNS.Training.prepare_dataset(snos)
+  config = CNS.Training.lora_config()
+  {:ok, adapter} = CNS.Training.train(dataset, config)
+  ```
+
+  New approach:
+  ```elixir
+  {:ok, dataset} = CNS.TrainingV2.prepare_dataset(snos)
+  {:ok, context} = CNS.TrainingV2.train(dataset)
+  ```
+
+  ## Example
+
+      # Prepare training data
+      {:ok, dataset} = CNS.TrainingV2.prepare_dataset(snos, format: :dialectical)
+
+      # Train using Crucible IR
+      {:ok, context} = CNS.TrainingV2.train(dataset,
+        base_model: "meta-llama/Llama-3.2-1B",
+        lora_rank: 16,
+        target: :synthesizer
+      )
+
+      # Access results
+      metrics = context.metrics.cns
+      checkpoint = context.outputs.checkpoint
+  """
+
+  require Logger
+
+  alias CNS.{SNO, Evidence}
+  alias Crucible.IR.{
+    Experiment,
+    DatasetRef,
+    BackendRef,
+    ReliabilityConfig,
+    EnsembleConfig,
+    HedgingConfig,
+    GuardrailConfig,
+    StatsConfig,
+    FairnessConfig,
+    OutputSpec,
+    StageDef
+  }
+
+  @type dataset :: %{
+          train: [map()],
+          validation: [map()],
+          test: [map()],
+          metadata: map()
+        }
+
+  @type training_opts :: [
+          base_model: String.t(),
+          lora_rank: pos_integer(),
+          lora_alpha: pos_integer(),
+          target: atom(),
+          learning_rate: float(),
+          epochs: pos_integer(),
+          batch_size: pos_integer(),
+          dropout: float()
+        ]
+
+  @doc """
+  Prepare dataset for CNS training.
+
+  Converts SNOs into training examples for fine-tuning.
+
+  ## Options
+
+  * `:format` - Output format (:dialectical, :qa, :nli) (default: :dialectical)
+  * `:split` - Train/val/test split ratios (default: [0.8, 0.1, 0.1])
+  * `:include_evidence` - Include evidence in examples (default: true)
+
+  ## Examples
+
+      iex> snos = [CNS.SNO.new("Claim 1"), CNS.SNO.new("Claim 2")]
+      iex> {:ok, dataset} = CNS.TrainingV2.prepare_dataset(snos)
+      iex> Map.has_key?(dataset, :train)
+      true
+  """
+  @spec prepare_dataset([SNO.t()], keyword()) :: {:ok, dataset()} | {:error, term()}
+  def prepare_dataset(snos, opts \\ []) when is_list(snos) do
+    format = Keyword.get(opts, :format, :dialectical)
+    [train_ratio, val_ratio, _test_ratio] = Keyword.get(opts, :split, [0.8, 0.1, 0.1])
+    include_evidence = Keyword.get(opts, :include_evidence, true)
+
+    # Convert SNOs to training examples
+    examples = Enum.map(snos, &sno_to_example(&1, format, include_evidence))
+
+    # Shuffle and split
+    shuffled = Enum.shuffle(examples)
+    n = length(shuffled)
+    # Ensure at least 1 training example if we have any examples
+    train_n = if n > 0, do: max(1, trunc(n * train_ratio)), else: 0
+    val_n = trunc(n * val_ratio)
+
+    {train, rest} = Enum.split(shuffled, train_n)
+    {validation, test} = Enum.split(rest, val_n)
+
+    dataset = %{
+      train: train,
+      validation: validation,
+      test: test,
+      metadata: %{
+        total: n,
+        format: format,
+        include_evidence: include_evidence,
+        prepared_at: DateTime.utc_now()
+      }
+    }
+
+    {:ok, dataset}
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Train a LoRA adapter using Crucible IR.
+
+  This builds a Crucible Experiment IR and delegates to CrucibleFramework.run/1.
+
+  ## Options
+
+  * `:base_model` - Base model to fine-tune (default: "meta-llama/Llama-3.2-1B")
+  * `:lora_rank` - LoRA rank (default: 16)
+  * `:lora_alpha` - LoRA alpha (default: 32)
+  * `:target` - Training target (:proposer, :antagonist, :synthesizer) (default: :synthesizer)
+  * `:learning_rate` - Learning rate (default: 2.0e-4)
+  * `:epochs` - Number of training epochs (default: 3)
+  * `:batch_size` - Batch size (default: 8)
+
+  ## Examples
+
+      iex> {:ok, dataset} = CNS.TrainingV2.prepare_dataset([CNS.SNO.new("Test")])
+      iex> {:ok, context} = CNS.TrainingV2.train(dataset)
+      iex> is_map(context.metrics)
+      true
+  """
+  @spec train(dataset(), training_opts()) :: {:ok, map()} | {:error, term()}
+  def train(dataset, opts \\ []) do
+    # Build Crucible Experiment IR
+    experiment = build_experiment(dataset, opts)
+
+    Logger.info("Starting CNS training via Crucible IR")
+    Logger.info("Experiment ID: #{experiment.id}")
+    Logger.info("Backend: #{experiment.backend.id}")
+    Logger.info("Dataset: #{dataset.metadata.total} examples")
+
+    # Run through Crucible pipeline
+    case CrucibleFramework.run(experiment) do
+      {:ok, context} ->
+        Logger.info("Training completed successfully")
+        {:ok, enrich_context(context, dataset, opts)}
+
+      {:error, reason} ->
+        Logger.error("Training failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Build Crucible Experiment IR from dataset and options.
+
+  This is the core translation from CNS training concepts to Crucible IR.
+  """
+  @spec build_experiment(dataset(), training_opts()) :: Experiment.t()
+  def build_experiment(dataset, opts \\ []) do
+    target = Keyword.get(opts, :target, :synthesizer)
+    base_model = Keyword.get(opts, :base_model, "meta-llama/Llama-3.2-1B")
+
+    %Experiment{
+      id: generate_experiment_id(opts),
+      description: "CNS #{target} training on dialectical dataset",
+      owner: "cns",
+      tags: ["cns", "training", to_string(target), "lora"],
+      metadata: %{
+        cns_version: "3.0",
+        target: target,
+        dataset_metadata: dataset.metadata
+      },
+
+      dataset: build_dataset_ref(dataset),
+
+      pipeline: build_pipeline(target, opts),
+
+      backend: %BackendRef{
+        id: :tinkex,
+        profile: :lora_finetune,
+        options: Map.new([
+          base_model: base_model,
+          lora_rank: Keyword.get(opts, :lora_rank, 16),
+          lora_alpha: Keyword.get(opts, :lora_alpha, 32),
+          target_modules: target_modules_for(target),
+          dropout: Keyword.get(opts, :dropout, 0.1),
+          learning_rate: Keyword.get(opts, :learning_rate, 2.0e-4),
+          warmup_steps: calculate_warmup_steps(dataset, opts),
+          epochs: Keyword.get(opts, :epochs, 3),
+          batch_size: Keyword.get(opts, :batch_size, 8),
+          loss_fn: :cross_entropy,
+          train_timeout: 30_000
+        ])
+      },
+
+      reliability: %ReliabilityConfig{
+        ensemble: %EnsembleConfig{strategy: :none},
+        hedging: %HedgingConfig{strategy: :off},
+        guardrails: %GuardrailConfig{
+          profiles: [:data_quality],
+          options: %{fail_on_violation: false}
+        },
+        stats: %StatsConfig{
+          tests: [:bootstrap],
+          alpha: 0.05,
+          options: %{bootstrap_n: 1000}
+        },
+        fairness: %FairnessConfig{enabled: false}
+      },
+
+      outputs: build_outputs(target, opts),
+
+      created_at: DateTime.utc_now(),
+      updated_at: DateTime.utc_now()
+    }
+  end
+
+  @doc """
+  Create training examples from thesis/antithesis/synthesis triplets.
+
+  ## Examples
+
+      iex> thesis = CNS.SNO.new("Coffee is good")
+      iex> antithesis = CNS.SNO.new("Coffee has downsides")
+      iex> synthesis = CNS.SNO.new("Coffee has benefits and risks")
+      iex> example = CNS.TrainingV2.triplet_to_example(thesis, antithesis, synthesis)
+      iex> Map.has_key?(example, :input)
+      true
+  """
+  @spec triplet_to_example(SNO.t(), SNO.t(), SNO.t()) :: map()
+  def triplet_to_example(%SNO{} = thesis, %SNO{} = antithesis, %SNO{} = synthesis) do
+    %{
+      input: format_triplet_input(thesis, antithesis),
+      output: synthesis.claim,
+      metadata: %{
+        thesis_id: thesis.id,
+        antithesis_id: antithesis.id,
+        synthesis_id: synthesis.id,
+        thesis_confidence: thesis.confidence,
+        antithesis_confidence: antithesis.confidence,
+        synthesis_confidence: synthesis.confidence
+      }
+    }
+  end
+
+  @doc """
+  Save training checkpoint via Crucible.
+
+  The checkpoint is managed by the Crucible backend.
+  """
+  @spec save_checkpoint(map(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  def save_checkpoint(context, path) when is_map(context) do
+    case Map.get(context, :checkpoint) do
+      nil ->
+        {:error, :no_checkpoint_available}
+
+      checkpoint ->
+        try do
+          # Ensure directory exists
+          dir = Path.dirname(path)
+          File.mkdir_p!(dir)
+
+          # Save checkpoint metadata
+          metadata = %{
+            checkpoint: checkpoint,
+            experiment_id: context[:experiment_id],
+            timestamp: DateTime.utc_now(),
+            metrics: context[:metrics]
+          }
+
+          File.write!(path <> ".meta.json", Jason.encode!(metadata, pretty: true))
+          {:ok, path}
+        rescue
+          e -> {:error, Exception.message(e)}
+        end
+    end
+  end
+
+  @doc """
+  Load training checkpoint.
+
+  This loads checkpoint metadata. The actual model weights are managed by Crucible/Tinkex.
+  """
+  @spec load_checkpoint(String.t()) :: {:ok, map()} | {:error, term()}
+  def load_checkpoint(path) do
+    try do
+      metadata_path = path <> ".meta.json"
+
+      if File.exists?(metadata_path) do
+        content = File.read!(metadata_path)
+        {:ok, Jason.decode!(content, keys: :atoms)}
+      else
+        {:error, :checkpoint_not_found}
+      end
+    rescue
+      e -> {:error, Exception.message(e)}
+    end
+  end
+
+  @doc """
+  Generate training report from Crucible context.
+  """
+  @spec training_report(map()) :: String.t()
+  def training_report(context) when is_map(context) do
+    """
+    CNS Training Report (via Crucible IR)
+    ======================================
+
+    Experiment: #{Map.get(context, :experiment_id, "N/A")}
+    Backend: #{get_in(context, [:experiment, :backend, :id]) || "N/A"}
+
+    Dataset:
+      - Train: #{get_in(context, [:dataset, :metadata, :train_count]) || "N/A"} examples
+      - Validation: #{get_in(context, [:dataset, :metadata, :val_count]) || "N/A"} examples
+      - Test: #{get_in(context, [:dataset, :metadata, :test_count]) || "N/A"} examples
+
+    Training:
+      - Epochs: #{get_in(context, [:training_metrics, :epochs]) || "N/A"}
+      - Final Loss: #{get_in(context, [:training_metrics, :final_loss]) || "N/A"}
+      - Best Epoch: #{get_in(context, [:training_metrics, :best_epoch]) || "N/A"}
+
+    CNS Metrics:
+      - Schema Compliance: #{get_in(context, [:metrics, :cns, :schema_compliance]) || "N/A"}
+      - Citation Accuracy: #{get_in(context, [:metrics, :cns, :citation_accuracy]) || "N/A"}
+      - Topology Score: #{get_in(context, [:metrics, :cns, :topology_score]) || "N/A"}
+      - Chirality Score: #{get_in(context, [:metrics, :cns, :chirality_score]) || "N/A"}
+
+    Evaluation:
+      - Accuracy: #{get_in(context, [:metrics, :eval, :accuracy]) || "N/A"}
+      - Avg Confidence: #{get_in(context, [:metrics, :eval, :avg_confidence]) || "N/A"}
+
+    Model:
+      - Base: #{get_in(context, [:experiment, :backend, :options, :base_model]) || "N/A"}
+      - LoRA Rank: #{get_in(context, [:experiment, :backend, :options, :lora_rank]) || "N/A"}
+      - Target: #{get_in(context, [:experiment, :metadata, :target]) || "N/A"}
+
+    Status: Completed via Crucible Framework
+    """
+  end
+
+  # Private functions
+
+  defp sno_to_example(%SNO{} = sno, format, include_evidence) do
+    base = %{
+      claim: sno.claim,
+      confidence: sno.confidence,
+      id: sno.id
+    }
+
+    base =
+      if include_evidence and not Enum.empty?(sno.evidence) do
+        evidence_text =
+          sno.evidence
+          |> Enum.map(&format_evidence/1)
+          |> Enum.join("\n")
+
+        Map.put(base, :evidence, evidence_text)
+      else
+        base
+      end
+
+    case format do
+      :dialectical ->
+        Map.merge(base, %{
+          input: "Analyze and synthesize: #{sno.claim}",
+          output: sno.claim,
+          type: :dialectical
+        })
+
+      :qa ->
+        Map.merge(base, %{
+          question: "What is the evidence for: #{sno.claim}?",
+          answer: format_evidence_answer(sno.evidence),
+          input: "Question: What is the evidence for: #{sno.claim}?",
+          output: format_evidence_answer(sno.evidence),
+          type: :qa
+        })
+
+      :nli ->
+        Map.merge(base, %{
+          premise: sno.claim,
+          hypothesis: "This claim is well-supported.",
+          label: if(sno.confidence > 0.7, do: :entailment, else: :neutral),
+          input: "Premise: #{sno.claim}\nHypothesis: This claim is well-supported.",
+          output: if(sno.confidence > 0.7, do: "entailment", else: "neutral"),
+          type: :nli
+        })
+
+      _ ->
+        base
+    end
+  end
+
+  defp format_evidence(%Evidence{} = evidence) do
+    "[#{evidence.source}] (validity: #{Float.round(evidence.validity, 2)})"
+  end
+
+  defp format_evidence_answer([]), do: "No evidence available."
+
+  defp format_evidence_answer(evidence) do
+    evidence
+    |> Enum.map(&"- #{&1.source}: #{&1.content}")
+    |> Enum.join("\n")
+  end
+
+  defp target_modules_for(:proposer), do: ["q_proj", "v_proj", "k_proj"]
+  defp target_modules_for(:antagonist), do: ["q_proj", "v_proj", "o_proj"]
+  defp target_modules_for(:synthesizer), do: ["q_proj", "v_proj", "k_proj", "o_proj"]
+  defp target_modules_for(_), do: ["q_proj", "v_proj"]
+
+  defp format_triplet_input(%SNO{} = thesis, %SNO{} = antithesis) do
+    """
+    Thesis: #{thesis.claim}
+    Confidence: #{thesis.confidence}
+
+    Antithesis: #{antithesis.claim}
+    Confidence: #{antithesis.confidence}
+
+    Synthesize these perspectives:
+    """
+  end
+
+  defp generate_experiment_id(opts) do
+    target = Keyword.get(opts, :target, :synthesizer)
+    timestamp = System.unique_integer([:positive]) |> rem(10000)
+    "cns_#{target}_#{timestamp}"
+  end
+
+  defp build_dataset_ref(dataset) do
+    # For in-memory dataset, we use a special provider
+    %DatasetRef{
+      provider: :memory,
+      name: "cns_dialectical",
+      split: :all,
+      options: %{
+        train: dataset.train,
+        validation: dataset.validation,
+        test: dataset.test,
+        metadata: dataset.metadata
+      }
+    }
+  end
+
+  defp build_pipeline(target, opts) do
+    [
+      %StageDef{
+        name: :data_load,
+        options: %{
+          format: :memory,
+          input_key: :input,
+          output_key: :output
+        }
+      },
+
+      %StageDef{
+        name: :data_checks,
+        options: %{
+          required_fields: [:input, :output],
+          check_confidence: true
+        }
+      },
+
+      %StageDef{
+        name: :cns_preprocessing,
+        options: %{
+          target: target,
+          normalize_confidence: true
+        }
+      },
+
+      %StageDef{
+        name: :backend_call,
+        options: %{
+          mode: :train
+        }
+      },
+
+      %StageDef{
+        name: :cns_metrics,
+        options: %{
+          compute_topology: true,
+          compute_chirality: true,
+          compute_entailment: true
+        }
+      },
+
+      %StageDef{
+        name: :bench,
+        options: %{
+          tests: [:bootstrap],
+          effect_size: :cohens_d
+        }
+      },
+
+      if Keyword.get(opts, :generate_report, true) do
+        %StageDef{
+          name: :report,
+          options: %{
+            sink: :memory,
+            formats: [:markdown, :json]
+          }
+        }
+      else
+        nil
+      end
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp build_outputs(target, opts) do
+    timestamp = DateTime.utc_now() |> DateTime.to_iso8601(:basic)
+    exp_id = generate_experiment_id(opts)
+
+    [
+      %OutputSpec{
+        name: :training_report,
+        description: "CNS training report",
+        formats: [:markdown, :json],
+        sink: :file,
+        options: %{
+          path: "reports/cns_#{target}_#{exp_id}_#{timestamp}"
+        }
+      },
+
+      %OutputSpec{
+        name: :checkpoint,
+        description: "Trained LoRA adapter for #{target}",
+        formats: [],
+        sink: :file,
+        options: %{
+          path: "checkpoints/cns_#{target}_#{exp_id}"
+        }
+      },
+
+      %OutputSpec{
+        name: :metrics,
+        description: "Training and evaluation metrics",
+        formats: [:json],
+        sink: :memory,
+        options: %{}
+      }
+    ]
+  end
+
+  defp calculate_warmup_steps(dataset, opts) do
+    batch_size = Keyword.get(opts, :batch_size, 8)
+    train_examples = length(dataset.train)
+    steps_per_epoch = div(train_examples, batch_size)
+
+    # Default to 10% of first epoch
+    min(100, div(steps_per_epoch, 10))
+  end
+
+  defp enrich_context(context, dataset, opts) do
+    context
+    |> Map.put(:dataset, dataset)
+    |> Map.put(:training_opts, opts)
+    |> Map.put(:completed_at, DateTime.utc_now())
+  end
+end

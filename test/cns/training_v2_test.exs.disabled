@@ -1,0 +1,485 @@
+defmodule CNS.TrainingV2Test do
+  use ExUnit.Case, async: true
+
+  alias CNS.{TrainingV2, SNO, Evidence}
+  alias Crucible.IR.{Experiment, DatasetRef, BackendRef, StageDef}
+
+  describe "prepare_dataset/2" do
+    test "creates dataset with correct structure" do
+      snos = [
+        SNO.new("Claim 1", confidence: 0.8),
+        SNO.new("Claim 2", confidence: 0.9),
+        SNO.new("Claim 3", confidence: 0.7)
+      ]
+
+      {:ok, dataset} = TrainingV2.prepare_dataset(snos)
+
+      assert Map.has_key?(dataset, :train)
+      assert Map.has_key?(dataset, :validation)
+      assert Map.has_key?(dataset, :test)
+      assert Map.has_key?(dataset, :metadata)
+
+      # Check split ratios (default: 80/10/10)
+      assert length(dataset.train) == 2  # 80% of 3 = 2.4 -> 2
+      assert length(dataset.validation) == 0  # 10% of 3 = 0.3 -> 0
+      assert length(dataset.test) == 1  # remainder
+    end
+
+    test "dialectical format creates correct examples" do
+      sno = SNO.new("Test claim", confidence: 0.85)
+      {:ok, dataset} = TrainingV2.prepare_dataset([sno], format: :dialectical)
+
+      example = hd(dataset.train)
+      assert example.input == "Analyze and synthesize: Test claim"
+      assert example.output == "Test claim"
+      assert example.type == :dialectical
+      assert example.claim == "Test claim"
+      assert example.confidence == 0.85
+    end
+
+    test "qa format creates correct examples" do
+      sno = SNO.new("Test claim",
+        confidence: 0.85,
+        evidence: [Evidence.new("Source1", "Content1")]
+      )
+      {:ok, dataset} = TrainingV2.prepare_dataset([sno], format: :qa)
+
+      example = hd(dataset.train)
+      assert example.question =~ "What is the evidence for"
+      assert example.answer =~ "Source1: Content1"
+      assert example.type == :qa
+    end
+
+    test "nli format creates correct examples" do
+      sno_high = SNO.new("High confidence claim", confidence: 0.9)
+      sno_low = SNO.new("Low confidence claim", confidence: 0.3)
+
+      {:ok, dataset_high} = TrainingV2.prepare_dataset([sno_high], format: :nli)
+      {:ok, dataset_low} = TrainingV2.prepare_dataset([sno_low], format: :nli)
+
+      high_example = hd(dataset_high.train)
+      low_example = hd(dataset_low.train)
+
+      assert high_example.label == :entailment
+      assert high_example.output == "entailment"
+      assert low_example.label == :neutral
+      assert low_example.output == "neutral"
+    end
+
+    test "includes evidence when requested" do
+      evidence = [
+        Evidence.new("Paper A", "Finding 1", validity: 0.9),
+        Evidence.new("Paper B", "Finding 2", validity: 0.8)
+      ]
+      sno = SNO.new("Claim with evidence", evidence: evidence)
+
+      {:ok, dataset} = TrainingV2.prepare_dataset([sno], include_evidence: true)
+      example = hd(dataset.train)
+
+      assert Map.has_key?(example, :evidence)
+      assert example.evidence =~ "Paper A"
+      assert example.evidence =~ "Paper B"
+      assert example.evidence =~ "0.9"
+      assert example.evidence =~ "0.8"
+    end
+
+    test "excludes evidence when not requested" do
+      evidence = [Evidence.new("Paper A", "Finding 1")]
+      sno = SNO.new("Claim with evidence", evidence: evidence)
+
+      {:ok, dataset} = TrainingV2.prepare_dataset([sno], include_evidence: false)
+      example = hd(dataset.train)
+
+      refute Map.has_key?(example, :evidence)
+    end
+
+    test "custom split ratios work correctly" do
+      snos = Enum.map(1..10, fn i -> SNO.new("Claim #{i}") end)
+
+      {:ok, dataset} = TrainingV2.prepare_dataset(snos, split: [0.6, 0.2, 0.2])
+
+      assert length(dataset.train) == 6
+      assert length(dataset.validation) == 2
+      assert length(dataset.test) == 2
+    end
+
+    test "ensures at least one training example" do
+      snos = [SNO.new("Single claim")]
+
+      {:ok, dataset} = TrainingV2.prepare_dataset(snos)
+
+      assert length(dataset.train) == 1
+      assert length(dataset.validation) == 0
+      assert length(dataset.test) == 0
+    end
+
+    test "handles empty input gracefully" do
+      {:ok, dataset} = TrainingV2.prepare_dataset([])
+
+      assert dataset.train == []
+      assert dataset.validation == []
+      assert dataset.test == []
+      assert dataset.metadata.total == 0
+    end
+
+    test "metadata contains correct information" do
+      snos = [SNO.new("Test")]
+
+      {:ok, dataset} = TrainingV2.prepare_dataset(snos,
+        format: :qa,
+        include_evidence: false
+      )
+
+      assert dataset.metadata.total == 1
+      assert dataset.metadata.format == :qa
+      assert dataset.metadata.include_evidence == false
+      assert %DateTime{} = dataset.metadata.prepared_at
+    end
+  end
+
+  describe "build_experiment/2" do
+    setup do
+      snos = [
+        SNO.new("Claim 1", confidence: 0.8),
+        SNO.new("Claim 2", confidence: 0.9)
+      ]
+      {:ok, dataset} = TrainingV2.prepare_dataset(snos)
+      {:ok, dataset: dataset}
+    end
+
+    test "creates valid experiment struct", %{dataset: dataset} do
+      experiment = TrainingV2.build_experiment(dataset)
+
+      assert %Experiment{} = experiment
+      assert experiment.id =~ ~r/^cns_synthesizer_\d+$/
+      assert experiment.owner == "cns"
+      assert "cns" in experiment.tags
+      assert "training" in experiment.tags
+      assert "synthesizer" in experiment.tags
+      assert "lora" in experiment.tags
+    end
+
+    test "dataset reference is configured correctly", %{dataset: dataset} do
+      experiment = TrainingV2.build_experiment(dataset)
+
+      assert %DatasetRef{} = experiment.dataset
+      assert experiment.dataset.provider == :memory
+      assert experiment.dataset.name == "cns_dialectical"
+      assert experiment.dataset.split == :all
+      assert experiment.dataset.options.train == dataset.train
+      assert experiment.dataset.options.validation == dataset.validation
+      assert experiment.dataset.options.test == dataset.test
+    end
+
+    test "backend is configured for Tinkex", %{dataset: dataset} do
+      experiment = TrainingV2.build_experiment(dataset)
+
+      assert %BackendRef{} = experiment.backend
+      assert experiment.backend.id == :tinkex
+      assert experiment.backend.profile == :lora_finetune
+      assert experiment.backend.options.base_model == "meta-llama/Llama-3.2-1B"
+      assert experiment.backend.options.lora_rank == 16
+      assert experiment.backend.options.lora_alpha == 32
+      assert experiment.backend.options.learning_rate == 2.0e-4
+    end
+
+    test "pipeline stages are correct", %{dataset: dataset} do
+      experiment = TrainingV2.build_experiment(dataset)
+      stage_names = Enum.map(experiment.pipeline, & &1.name)
+
+      assert :data_load in stage_names
+      assert :data_checks in stage_names
+      assert :cns_preprocessing in stage_names
+      assert :backend_call in stage_names
+      assert :cns_metrics in stage_names
+      assert :bench in stage_names
+      assert :report in stage_names
+    end
+
+    test "target-specific configuration for proposer", %{dataset: dataset} do
+      experiment = TrainingV2.build_experiment(dataset, target: :proposer)
+
+      assert experiment.backend.options.target_modules == ["q_proj", "v_proj", "k_proj"]
+      assert experiment.id =~ ~r/^cns_proposer_\d+$/
+      assert "proposer" in experiment.tags
+    end
+
+    test "target-specific configuration for antagonist", %{dataset: dataset} do
+      experiment = TrainingV2.build_experiment(dataset, target: :antagonist)
+
+      assert experiment.backend.options.target_modules == ["q_proj", "v_proj", "o_proj"]
+      assert experiment.id =~ ~r/^cns_antagonist_\d+$/
+      assert "antagonist" in experiment.tags
+    end
+
+    test "target-specific configuration for synthesizer", %{dataset: dataset} do
+      experiment = TrainingV2.build_experiment(dataset, target: :synthesizer)
+
+      assert experiment.backend.options.target_modules == ["q_proj", "v_proj", "k_proj", "o_proj"]
+      assert experiment.id =~ ~r/^cns_synthesizer_\d+$/
+      assert "synthesizer" in experiment.tags
+    end
+
+    test "custom options are applied", %{dataset: dataset} do
+      experiment = TrainingV2.build_experiment(dataset,
+        base_model: "mistral-7b",
+        lora_rank: 32,
+        lora_alpha: 64,
+        learning_rate: 1.0e-3,
+        epochs: 5,
+        batch_size: 16,
+        dropout: 0.2
+      )
+
+      assert experiment.backend.options.base_model == "mistral-7b"
+      assert experiment.backend.options.lora_rank == 32
+      assert experiment.backend.options.lora_alpha == 64
+      assert experiment.backend.options.learning_rate == 1.0e-3
+      assert experiment.backend.options.epochs == 5
+      assert experiment.backend.options.batch_size == 16
+      assert experiment.backend.options.dropout == 0.2
+    end
+
+    test "warmup steps calculation", %{dataset: dataset} do
+      # With 2 examples and batch_size 8, we have 0 complete batches
+      # So warmup should be min(100, 0) = 0... but we might have a minimum
+      experiment = TrainingV2.build_experiment(dataset, batch_size: 1)
+
+      # With batch_size 1, we have 2 steps per epoch
+      # Warmup should be min(100, 0) = 0 (10% of 2 = 0)
+      assert experiment.backend.options.warmup_steps == 0
+    end
+
+    test "outputs are configured correctly", %{dataset: dataset} do
+      experiment = TrainingV2.build_experiment(dataset)
+
+      assert length(experiment.outputs) == 3
+
+      report_output = Enum.find(experiment.outputs, &(&1.name == :training_report))
+      assert report_output.formats == [:markdown, :json]
+      assert report_output.sink == :file
+
+      checkpoint_output = Enum.find(experiment.outputs, &(&1.name == :checkpoint))
+      assert checkpoint_output.sink == :file
+
+      metrics_output = Enum.find(experiment.outputs, &(&1.name == :metrics))
+      assert metrics_output.formats == [:json]
+      assert metrics_output.sink == :memory
+    end
+
+    test "CNS preprocessing stage has target info", %{dataset: dataset} do
+      experiment = TrainingV2.build_experiment(dataset, target: :proposer)
+
+      preprocessing = Enum.find(experiment.pipeline, &(&1.name == :cns_preprocessing))
+      assert preprocessing.options.target == :proposer
+      assert preprocessing.options.normalize_confidence == true
+    end
+
+    test "report generation can be disabled", %{dataset: dataset} do
+      experiment = TrainingV2.build_experiment(dataset, generate_report: false)
+
+      stage_names = Enum.map(experiment.pipeline, & &1.name)
+      refute :report in stage_names
+    end
+  end
+
+  describe "triplet_to_example/3" do
+    test "creates correct training example from triplet" do
+      thesis = SNO.new("Coffee is energizing", confidence: 0.8, id: "thesis-1")
+      antithesis = SNO.new("Coffee causes anxiety", confidence: 0.7, id: "anti-1")
+      synthesis = SNO.new("Coffee has both benefits and risks", confidence: 0.85, id: "synth-1")
+
+      example = TrainingV2.triplet_to_example(thesis, antithesis, synthesis)
+
+      assert example.output == "Coffee has both benefits and risks"
+      assert example.input =~ "Thesis: Coffee is energizing"
+      assert example.input =~ "Antithesis: Coffee causes anxiety"
+      assert example.input =~ "Confidence: 0.8"
+      assert example.input =~ "Confidence: 0.7"
+      assert example.input =~ "Synthesize these perspectives:"
+
+      assert example.metadata.thesis_id == "thesis-1"
+      assert example.metadata.antithesis_id == "anti-1"
+      assert example.metadata.synthesis_id == "synth-1"
+      assert example.metadata.thesis_confidence == 0.8
+      assert example.metadata.antithesis_confidence == 0.7
+      assert example.metadata.synthesis_confidence == 0.85
+    end
+  end
+
+  describe "save_checkpoint/2" do
+    @tag :tmp_dir
+    test "saves checkpoint metadata", %{tmp_dir: tmp_dir} do
+      context = %{
+        checkpoint: "checkpoint_data_here",
+        experiment_id: "test_exp_123",
+        metrics: %{accuracy: 0.95}
+      }
+
+      path = Path.join(tmp_dir, "test_checkpoint")
+      {:ok, saved_path} = TrainingV2.save_checkpoint(context, path)
+
+      assert saved_path == path
+      assert File.exists?(path <> ".meta.json")
+
+      content = File.read!(path <> ".meta.json")
+      metadata = Jason.decode!(content, keys: :atoms)
+
+      assert metadata.checkpoint == "checkpoint_data_here"
+      assert metadata.experiment_id == "test_exp_123"
+      assert metadata.metrics.accuracy == 0.95
+      assert %{} = metadata.timestamp
+    end
+
+    test "returns error when no checkpoint available" do
+      context = %{metrics: %{accuracy: 0.95}}
+
+      assert {:error, :no_checkpoint_available} = TrainingV2.save_checkpoint(context, "/tmp/test")
+    end
+
+    @tag :tmp_dir
+    test "creates directory if it doesn't exist", %{tmp_dir: tmp_dir} do
+      context = %{checkpoint: "data", experiment_id: "exp"}
+
+      nested_path = Path.join([tmp_dir, "nested", "dir", "checkpoint"])
+      {:ok, _} = TrainingV2.save_checkpoint(context, nested_path)
+
+      assert File.exists?(Path.dirname(nested_path))
+    end
+  end
+
+  describe "load_checkpoint/1" do
+    @tag :tmp_dir
+    test "loads checkpoint metadata", %{tmp_dir: tmp_dir} do
+      # First save a checkpoint
+      context = %{
+        checkpoint: "checkpoint_data",
+        experiment_id: "test_exp",
+        metrics: %{loss: 0.1}
+      }
+
+      path = Path.join(tmp_dir, "test_checkpoint")
+      {:ok, _} = TrainingV2.save_checkpoint(context, path)
+
+      # Now load it
+      {:ok, loaded} = TrainingV2.load_checkpoint(path)
+
+      assert loaded.checkpoint == "checkpoint_data"
+      assert loaded.experiment_id == "test_exp"
+      assert loaded.metrics.loss == 0.1
+    end
+
+    test "returns error when checkpoint doesn't exist" do
+      assert {:error, :checkpoint_not_found} = TrainingV2.load_checkpoint("/nonexistent/path")
+    end
+  end
+
+  describe "training_report/1" do
+    test "generates comprehensive report" do
+      context = %{
+        experiment_id: "cns_test_123",
+        experiment: %{
+          backend: %{
+            id: :tinkex,
+            options: %{
+              base_model: "llama-3.2",
+              lora_rank: 16
+            }
+          },
+          metadata: %{
+            target: :synthesizer
+          }
+        },
+        dataset: %{
+          metadata: %{
+            train_count: 100,
+            val_count: 20,
+            test_count: 20
+          }
+        },
+        training_metrics: %{
+          epochs: 3,
+          final_loss: 0.15,
+          best_epoch: 2
+        },
+        metrics: %{
+          cns: %{
+            schema_compliance: 0.95,
+            citation_accuracy: 0.88,
+            topology_score: 0.92,
+            chirality_score: 0.85
+          },
+          eval: %{
+            accuracy: 0.91,
+            avg_confidence: 0.84
+          }
+        }
+      }
+
+      report = TrainingV2.training_report(context)
+
+      assert report =~ "CNS Training Report"
+      assert report =~ "Crucible IR"
+      assert report =~ "cns_test_123"
+      assert report =~ "tinkex"
+      assert report =~ "100 examples"
+      assert report =~ "3"  # epochs
+      assert report =~ "0.15"  # loss
+      assert report =~ "0.95"  # schema compliance
+      assert report =~ "0.88"  # citation accuracy
+      assert report =~ "0.91"  # accuracy
+      assert report =~ "llama-3.2"
+      assert report =~ "16"  # lora rank
+      assert report =~ "synthesizer"
+    end
+
+    test "handles missing fields gracefully" do
+      report = TrainingV2.training_report(%{})
+
+      assert report =~ "N/A"
+      refute report =~ "nil"
+      refute report =~ "error"
+    end
+  end
+
+  describe "train/2" do
+    @tag :integration
+    @tag :skip
+    test "integration with CrucibleFramework" do
+      # This would require mocking CrucibleFramework.run/1
+      # Skip for now as it requires full integration setup
+    end
+  end
+
+  describe "edge cases" do
+    test "handles invalid format gracefully" do
+      sno = SNO.new("Test")
+      {:ok, dataset} = TrainingV2.prepare_dataset([sno], format: :unknown)
+
+      example = hd(dataset.train)
+      # Should have basic fields even with unknown format
+      assert example.claim == "Test"
+      assert example.confidence
+      assert example.id
+    end
+
+    test "handles SNOs without evidence" do
+      sno = SNO.new("No evidence claim")
+      {:ok, dataset} = TrainingV2.prepare_dataset([sno], include_evidence: true)
+
+      example = hd(dataset.train)
+      # Should not crash, just not include evidence field
+      assert example.claim == "No evidence claim"
+    end
+
+    test "handles very small warmup calculation" do
+      snos = [SNO.new("Single")]
+      {:ok, dataset} = TrainingV2.prepare_dataset(snos)
+
+      experiment = TrainingV2.build_experiment(dataset, batch_size: 100)
+
+      # With 1 example and batch_size 100, warmup should be 0
+      assert experiment.backend.options.warmup_steps == 0
+    end
+  end
+end

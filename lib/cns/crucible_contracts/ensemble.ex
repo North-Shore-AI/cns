@@ -1,8 +1,17 @@
 defmodule CrucibleFramework.Ensemble.ML do
   @moduledoc """
   Behaviour contract for CrucibleFramework ensemble API.
-  """
 
+  DEPRECATED: This module represents the legacy Crucible contract interface.
+  The Crucible Framework has moved to a new IR-based architecture.
+
+  Migration path:
+  - Use `CNS.CrucibleAdapter` for CNS integration with Crucible pipelines
+  - Configure via: `config :crucible_framework, :cns_adapter, CNS.CrucibleAdapter`
+  - See `Crucible.CNS.Adapter` behaviour for the new interface
+
+  This module will be removed in a future version.
+  """
   @type infer_opts :: [
           strategy: :majority | :weighted_majority | :best_confidence | :unanimous,
           execution: :parallel | :sequential | :hedged | :cascade,
