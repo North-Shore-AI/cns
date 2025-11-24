@@ -128,7 +128,13 @@ defmodule CNS.Topology.Surrogates do
 
   def compute_fragility_surrogate(embeddings, opts) do
     k = Keyword.get(opts, :k, 5)
-    metric = Keyword.get(opts, :metric, :euclidean)
+
+    metric =
+      case Keyword.get(opts, :metric, :euclidean) do
+        :cosine -> :cosine
+        :euclidean -> :euclidean
+        _ -> :euclidean
+      end
 
     tensor = ensure_tensor(embeddings)
     {n_samples, _dim} = Nx.shape(tensor)
@@ -262,53 +268,65 @@ defmodule CNS.Topology.Surrogates do
     compute_beta1_surrogate(graph)
   end
 
-  defp count_components(graph, nodes) do
+  @spec count_components(%{optional(any()) => [any()]}, MapSet.t(any())) :: non_neg_integer()
+  defp count_components(graph, %MapSet{} = nodes) do
     adjacency =
       Enum.reduce(graph, %{}, fn {node, children}, acc ->
         acc
-        |> Map.update(node, MapSet.new(children), &MapSet.union(&1, MapSet.new(children)))
+        |> Map.update(node, Enum.uniq(children), fn existing ->
+          existing
+          |> Kernel.++(children)
+          |> Enum.uniq()
+        end)
         |> add_reverse_edges(node, children)
       end)
       |> ensure_all_nodes(nodes)
 
-    walk_components(MapSet.new(), Map.keys(adjacency), adjacency, 0)
+    walk_components(%{}, Map.keys(adjacency), adjacency, 0)
   end
 
   defp add_reverse_edges(acc, _node, []), do: acc
 
   defp add_reverse_edges(acc, node, [child | rest]) do
-    acc
-    |> Map.update(child, MapSet.new([node]), &MapSet.put(&1, node))
-    |> add_reverse_edges(node, rest)
+    updated =
+      Map.update(acc, child, [node], fn existing ->
+        [node | existing] |> Enum.uniq()
+      end)
+
+    add_reverse_edges(updated, node, rest)
   end
 
-  defp ensure_all_nodes(adjacency, nodes) do
-    Enum.reduce(nodes, adjacency, fn node, acc ->
-      Map.put_new(acc, node, MapSet.new())
+  defp ensure_all_nodes(adjacency, %MapSet{} = nodes) do
+    nodes
+    |> MapSet.to_list()
+    |> Enum.reduce(adjacency, fn node, acc ->
+      Map.put_new(acc, node, [])
     end)
   end
 
+  @spec walk_components(map(), [any()], map(), non_neg_integer()) :: non_neg_integer()
   defp walk_components(_visited, [], _adjacency, count), do: count
 
   defp walk_components(visited, [node | rest], adjacency, count) do
-    if MapSet.member?(visited, node) do
+    if Map.has_key?(visited, node) do
       walk_components(visited, rest, adjacency, count)
     else
-      neighbors = Map.get(adjacency, node, MapSet.new())
-      component_nodes = dfs(neighbors, adjacency, MapSet.new([node]))
-      walk_components(MapSet.union(visited, component_nodes), rest, adjacency, count + 1)
+      neighbors = Map.get(adjacency, node, [])
+      component_nodes = dfs(neighbors, adjacency, Map.put(visited, node, true))
+      walk_components(component_nodes, rest, adjacency, count + 1)
     end
   end
 
-  defp dfs(neighbors, adjacency, visited) do
-    Enum.reduce(neighbors, visited, fn neighbor, acc ->
-      if MapSet.member?(acc, neighbor) do
-        acc
-      else
-        next_neighbors = Map.get(adjacency, neighbor, MapSet.new())
-        dfs(next_neighbors, adjacency, MapSet.put(acc, neighbor))
-      end
-    end)
+  @spec dfs([any()], map(), map()) :: map()
+  defp dfs([], _adjacency, visited), do: visited
+
+  defp dfs([neighbor | rest], adjacency, visited) do
+    if Map.has_key?(visited, neighbor) do
+      dfs(rest, adjacency, visited)
+    else
+      next_neighbors = Map.get(adjacency, neighbor, [])
+      dfs(next_neighbors ++ rest, adjacency, Map.put(visited, neighbor, true))
+    end
   end
 
   defp ensure_tensor(embeddings) when is_struct(embeddings, Nx.Tensor), do: embeddings
@@ -336,7 +354,8 @@ defmodule CNS.Topology.Surrogates do
     end
   end
 
-  defp compute_knn_variance(tensor, k, metric) do
+  @spec compute_knn_variance(Nx.Tensor.t(), pos_integer(), :euclidean | :cosine) :: float()
+  defp compute_knn_variance(tensor, k, metric) when metric in [:euclidean, :cosine] do
     {n_samples, _} = Nx.shape(tensor)
     distances = compute_distance_matrix(tensor, metric)
 
@@ -359,6 +378,7 @@ defmodule CNS.Topology.Surrogates do
     normalize_fragility(mean_distance, metric)
   end
 
+  @spec compute_distance_matrix(Nx.Tensor.t(), :euclidean | :cosine) :: Nx.Tensor.t()
   defp compute_distance_matrix(tensor, :euclidean) do
     # Compute Euclidean distance matrix
     {_n, _} = Nx.shape(tensor)
@@ -398,12 +418,12 @@ defmodule CNS.Topology.Surrogates do
     Nx.subtract(1.0, similarity)
   end
 
-  defp normalize_fragility(distance, metric) do
+  @spec normalize_fragility(number(), :cosine | :euclidean) :: float()
+  defp normalize_fragility(distance, metric) when metric in [:cosine, :euclidean] do
     max_distance =
       case metric do
         :cosine -> 2.0
         :euclidean -> 1.5
-        _ -> 2.0
       end
 
     score = distance / max_distance

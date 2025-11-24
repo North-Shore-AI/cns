@@ -327,7 +327,7 @@ defmodule CNS.CrucibleAdapter do
               |> Enum.map(& &1.source)
 
             if length(parent_ids) > 0 do
-              Provenance.new(:synthesis, parent_ids: parent_ids)
+              Provenance.new(:synthesizer, parent_ids: parent_ids)
             else
               nil
             end
