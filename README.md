@@ -211,114 +211,16 @@ config :cns, CNS.Synthesizer,
 
 ## Crucible Framework Integration
 
-CNS now provides a concrete adapter for integration with the Crucible Framework's experimental pipeline system. This enables CNS metrics to be used for evaluating model outputs in Crucible experiments.
+The core `cns` library is now Crucible-agnostic. Concrete adapters and wiring
+live in the `cns_experiments` application, which plugs into `Crucible.CNS`
+behaviours (`:cns_adapter`, `:cns_surrogate_adapter`, `:cns_tda_adapter`) and
+registers CNS stages in the Crucible stage registry.
 
-### Configuration
-
-In your Crucible Framework application, configure the CNS adapter in `config/config.exs`:
-
-```elixir
-config :crucible_framework,
-  cns_adapter: CNS.CrucibleAdapter  # Use CNS metrics in pipeline
-  # or
-  # cns_adapter: Crucible.CNS.Noop  # Skip CNS metrics
-```
-
-### Usage in Crucible Pipelines
-
-The CNS adapter is automatically called by `Crucible.Stage.CNSMetrics` during pipeline execution:
-
-```elixir
-pipeline = [
-  {:data_load, %{}},
-  {:backend_call, %{backend: :tinkex}},
-  {:cns_metrics, %{}},  # CNS evaluation happens here
-  {:report, %{}}
-]
-
-Crucible.run_experiment(experiment, pipeline)
-```
-
-### Metrics Provided
-
-The CNS adapter computes comprehensive metrics for model outputs:
-
-- **Schema Compliance**: Percentage of outputs parseable as CLAIM/RELATION format (target ≥95%)
-- **Citation Accuracy**: Percentage of valid citations against corpus (target ≥95%)
-- **Entailment Scores**: NLI-based semantic validation (target ≥0.50 mean)
-- **Topology Metrics**: β₁ numbers, DAG validation, cycle detection
-- **Chirality Metrics**: Polarity conflict detection for dialectical tensions
-- **Overall Quality**: Weighted aggregate score with CNS 3.0 threshold checking
-
-### Example Output
-
-```elixir
-{:ok, metrics} = CNS.CrucibleAdapter.evaluate(examples, outputs, %{})
-
-# metrics contains:
-%{
-  schema_compliance: 0.98,       # 98% of outputs parseable
-  citation_accuracy: 0.96,       # 96% valid citations
-  mean_entailment: 0.72,         # Strong semantic support
-  topology: %{
-    mean_beta1: 0.2,             # Low cyclic complexity
-    dag_count: 8,                # 8 DAG structures
-    cyclic_count: 2              # 2 cycles detected
-  },
-  chirality: %{
-    mean_score: 0.15,            # Low contradiction rate
-    polarity_conflicts: 3        # 3 opposing claim pairs
-  },
-  overall_quality: 0.89,         # Weighted quality score
-  meets_threshold: true          # Passes CNS 3.0 targets
-}
-```
-
-### Migration from Legacy Contracts
-
-If you were using the legacy Crucible contracts in `lib/cns/crucible_contracts/`, these are now deprecated. The new adapter provides a cleaner, behaviour-based integration:
-
-```elixir
-# Old (deprecated):
-# Direct usage of CrucibleFramework.Ensemble.ML, etc.
-
-# New (recommended):
-# Configure CNS.CrucibleAdapter as shown above
-# Metrics are automatically computed in pipeline
-```
-
-### Advanced Configuration
-
-For custom evaluation thresholds or specialized metrics, extend the adapter:
-
-```elixir
-defmodule MyApp.CustomCNSAdapter do
-  @behaviour Crucible.CNS.Adapter
-
-  def evaluate(examples, outputs, opts) do
-    # Custom preprocessing
-    processed = preprocess(outputs)
-
-    # Delegate to CNS adapter with custom opts
-    CNS.CrucibleAdapter.evaluate(examples, processed, opts)
-  end
-end
-```
-
-### Testing
-
-The adapter includes comprehensive tests. Run them with:
-
-```bash
-mix test test/cns/crucible_adapter_test.exs
-```
-
-For integration testing with Crucible Framework:
-
-```bash
-# In crucible_framework directory
-mix test test/integration/cns_adapter_test.exs
-```
+- To use CNS metrics/topology inside Crucible, depend on `cns_experiments` and
+  configure the adapters there (see that repo's `config/config.exs`).
+- If you previously used `CNS.CrucibleAdapter` or the legacy
+  `lib/cns/crucible_contracts/*` modules, switch to the new adapters in
+  `CNSExperiments.Adapters.*`.
 
 ## Development
 

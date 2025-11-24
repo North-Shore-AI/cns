@@ -123,7 +123,8 @@ defmodule CNS.MixProject do
         ],
         "Logic & Topology": [
           CNS.Logic.Betti,
-          CNS.Topology
+          CNS.Topology,
+          CNS.Topology.TDA
         ],
         Metrics: [
           CNS.Metrics.Chirality,
