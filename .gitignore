@@ -47,3 +47,4 @@ assets/build/
 *.bak
 .idea/
 .vscode/
+repomix*.xml
