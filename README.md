@@ -23,17 +23,22 @@ CNS (Chiral Narrative Synthesis) is an Elixir library implementing a novel three
 - **Structured Narrative Objects (SNOs)**: Rich data structures capturing claims, evidence, confidence scores, and provenance chains
 - **Three-Agent Pipeline**: Proposer, Antagonist, and Synthesizer agents work in concert to refine knowledge
 - **Evidence Grounding**: All claims are anchored to verifiable sources with citation validity scoring
-- **Convergence Guarantees**: Mathematical foundations ensure the dialectical process terminates with coherent output
+- **Topological Analysis**: Detect circular reasoning and logical inconsistencies via graph topology
+- **Chirality Metrics**: Measure polarity conflicts between supporting and refuting evidence
+
+---
 
 ## Features
 
 - **Claim Extraction**: Extract structured claims from unstructured text with confidence scoring
 - **Dialectical Synthesis**: Automated thesis-antithesis-synthesis reasoning cycles
 - **Evidence Grounding**: Link claims to verifiable sources with validity scores
-- **Multi-Model Support**: Integrate with various LLM backends via Crucible
-- **LoRA Training Integration**: Fine-tune models for domain-specific dialectics via Tinkex
+- **Topological Validation**: β₁ (Betti number) surrogates for detecting circular reasoning
+- **Chirality Detection**: Identify polarity conflicts in claim networks
 - **Observable Pipeline**: Full telemetry and tracing for research and debugging
 - **Convergence Metrics**: Track synthesis quality and dialectical progress
+
+---
 
 ## Installation
 
@@ -52,6 +57,8 @@ Then run:
 ```bash
 mix deps.get
 ```
+
+---
 
 ## Quick Start
 
@@ -124,6 +131,8 @@ Enum.each(claims, fn claim ->
 end)
 ```
 
+---
+
 ## Architecture
 
 CNS implements a three-agent dialectical reasoning system:
@@ -161,19 +170,192 @@ CNS implements a three-agent dialectical reasoning system:
 
 ### Core Components
 
-1. **CNS.Proposer**: Generates initial claims and hypotheses from input data
-2. **CNS.Antagonist**: Challenges claims with counter-evidence and alternative interpretations
-3. **CNS.Synthesizer**: Reconciles conflicting claims into coherent, nuanced narratives
-4. **CNS.SNO**: Structured Narrative Object - the core data structure for claims
-5. **CNS.Evidence**: Evidence records with source attribution and validity scores
-6. **CNS.Pipeline**: Orchestrates the full dialectical reasoning cycle
+| Module | Purpose |
+|--------|---------|
+| `CNS.Proposer` | Generates initial claims and hypotheses from input data |
+| `CNS.Antagonist` | Challenges claims with counter-evidence and alternative interpretations |
+| `CNS.Synthesizer` | Reconciles conflicting claims into coherent, nuanced narratives |
+| `CNS.SNO` | Structured Narrative Object - the core data structure for claims |
+| `CNS.Evidence` | Evidence records with source attribution and validity scores |
+| `CNS.Pipeline` | Orchestrates the full dialectical reasoning cycle |
+| `CNS.Topology` | Graph analysis for claim networks |
+| `CNS.Topology.Surrogates` | Lightweight β₁ and fragility surrogates |
+| `CNS.Metrics.Chirality` | Polarity conflict detection |
 
-### Integration Points
+### Topological Analysis
 
-- **Crucible Framework**: Use Crucible's ensemble and hedging for reliable LLM calls
-- **Tinkex**: Train custom LoRA adapters for domain-specific dialectics
-- **ExDataCheck**: Validate input data quality before processing
-- **LlmGuard**: Protect against adversarial inputs and prompt injection
+CNS provides both lightweight surrogates and full TDA (Topological Data Analysis):
+
+```elixir
+# Surrogate computations (fast, O(V+E))
+alias CNS.Topology.Surrogates
+
+# β₁ surrogate - cycle detection via Tarjan's SCC
+beta1 = Surrogates.compute_beta1_surrogate(causal_links)
+
+# Fragility surrogate - embedding variance
+fragility = Surrogates.compute_fragility_surrogate(embeddings, k: 5)
+
+# Combined scoring
+score = Surrogates.compute_combined_score(beta1, fragility)
+```
+
+**Surrogate Interpretation**:
+- **β₁ = 0**: DAG structure (no circular reasoning)
+- **β₁ > 0**: Contains cycles (potential circular reasoning)
+- **High fragility**: Semantically unstable claims
+
+---
+
+## Crucible Framework Integration
+
+The core `cns` library is **Crucible-agnostic**. Concrete adapters and wiring live in the `cns_experiments` application, which plugs into `Crucible.CNS` behaviours.
+
+### Integration Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                      cns_experiments                              │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  CnsExperiments.Adapters.Metrics    → Crucible.CNS.Adapter │ │
+│  │  CnsExperiments.Adapters.Surrogates → Crucible.CNS.SurrogateAdapter │
+│  │  CnsExperiments.Adapters.TDA        → Crucible.CNS.TdaAdapter │
+│  └────────────────────────────────────────────────────────────┘ │
+│                              │                                    │
+│                              │ calls                              │
+│                              ▼                                    │
+└──────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                           cns                                     │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────────┐ │
+│  │  CNS.Topology  │  │  CNS.Metrics   │  │  CNS.SNO           │ │
+│  │  CNS.Topology  │  │  CNS.Validation│  │  CNS.Evidence      │ │
+│  │  .Surrogates   │  │                │  │                    │ │
+│  └────────────────┘  └────────────────┘  └────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Using CNS with Crucible
+
+To use CNS metrics/topology inside Crucible experiments:
+
+1. **Depend on `cns_experiments`** (not `cns` directly for Crucible integration)
+2. **Configure adapters** in `cns_experiments/config/config.exs`
+3. **Run experiments** via the Crucible IR
+
+```elixir
+# In cns_experiments
+CnsExperiments.Experiments.ScifactClaimExtraction.run(
+  batch_size: 4,
+  limit: 100
+)
+```
+
+### Migration from Legacy Contracts
+
+If you previously used `CNS.CrucibleAdapter` or the legacy `lib/cns/crucible_contracts/*` modules, switch to the new adapters in `CnsExperiments.Adapters.*`.
+
+**Deprecated modules**:
+- `lib/cns/crucible_contracts/ensemble.ex`
+- `lib/cns/crucible_contracts/lora.ex`
+- `lib/cns/crucible_contracts/datasets.ex`
+- `lib/cns/crucible_contracts/sampling.ex`
+
+---
+
+## Module Reference
+
+### Core Types
+
+```
+lib/cns/
+├── sno.ex                    # Structured Narrative Object
+├── evidence.ex               # Evidence with source/validity
+├── config.ex                 # Configuration struct
+├── provenance.ex             # Provenance chain tracking
+└── challenge.ex              # Antagonist challenges
+```
+
+### Pipeline
+
+```
+lib/cns/pipeline/
+├── converters.ex             # Format converters
+└── schema.ex                 # Pipeline schema validation
+```
+
+### Agents
+
+```
+lib/cns/
+├── proposer.ex               # Thesis generation
+├── antagonist.ex             # Antithesis generation
+└── synthesizer.ex            # Synthesis reconciliation
+```
+
+### Critics
+
+```
+lib/cns/critics/
+├── critic.ex                 # Base critic behaviour
+├── grounding.ex              # Evidence grounding critic
+├── causal.ex                 # Causal validity critic
+├── logic.ex                  # Logical consistency critic
+├── bias.ex                   # Bias detection critic
+└── novelty.ex                # Novelty assessment critic
+```
+
+### Validation
+
+```
+lib/cns/validation/
+├── semantic.ex               # Semantic validation (NLI, similarity)
+├── citation.ex               # Citation validity checking
+└── model_loader.ex           # ML model loading utilities
+```
+
+### Topology
+
+```
+lib/cns/topology/
+├── surrogates.ex             # β₁ and fragility surrogates
+└── tda.ex                    # Full topological data analysis
+
+lib/cns/
+├── topology.ex               # Graph building and analysis
+└── logic/
+    └── betti.ex              # Betti number computation
+```
+
+### Graph Utilities
+
+```
+lib/cns/graph/
+├── builder.ex                # Graph construction
+├── traversal.ex              # Graph traversal algorithms
+├── topology.ex               # Topological operations
+└── visualization.ex          # Graph visualization
+```
+
+### Metrics
+
+```
+lib/cns/
+├── metrics.ex                # Core metrics computation
+└── metrics/
+    └── chirality.ex          # Chirality/polarity metrics
+```
+
+### Training
+
+```
+lib/cns/
+├── training.ex               # Training utilities
+└── training/
+    └── evaluation.ex         # Training evaluation
+```
+
+---
 
 ## Configuration
 
@@ -185,6 +367,12 @@ config :cns,
   convergence_threshold: 0.85,
   evidence_validation: true,
   telemetry_enabled: true
+
+# Quality targets (used by adapters)
+config :cns,
+  schema_compliance_threshold: 0.95,
+  citation_accuracy_threshold: 0.95,
+  mean_entailment_threshold: 0.50
 
 # Model-specific settings
 config :cns, CNS.Proposer,
@@ -202,25 +390,7 @@ config :cns, CNS.Synthesizer,
   citation_validity_weight: 0.4
 ```
 
-## Documentation
-
-- [Architecture Guide](docs/20251121/architecture.md) - System design and theoretical foundations
-- [API Reference](docs/20251121/api_reference.md) - Complete module and function documentation
-- [Training Guide](docs/20251121/training_guide.md) - LoRA fine-tuning via Tinkex
-- [Getting Started](docs/20251121/getting_started.md) - Tutorial for new users
-
-## Crucible Framework Integration
-
-The core `cns` library is now Crucible-agnostic. Concrete adapters and wiring
-live in the `cns_experiments` application, which plugs into `Crucible.CNS`
-behaviours (`:cns_adapter`, `:cns_surrogate_adapter`, `:cns_tda_adapter`) and
-registers CNS stages in the Crucible stage registry.
-
-- To use CNS metrics/topology inside Crucible, depend on `cns_experiments` and
-  configure the adapters there (see that repo's `config/config.exs`).
-- If you previously used `CNS.CrucibleAdapter` or the legacy
-  `lib/cns/crucible_contracts/*` modules, switch to the new adapters in
-  `CNSExperiments.Adapters.*`.
+---
 
 ## Development
 
@@ -269,27 +439,7 @@ mix test --trace
 mix test --only property
 ```
 
-## Contributing
-
-We welcome contributions! Please see our contribution guidelines:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Write tests for your changes
-4. Ensure all tests pass (`mix test`)
-5. Run the formatter (`mix format`)
-6. Run dialyzer (`mix dialyzer`)
-7. Commit your changes (`git commit -m 'Add amazing feature'`)
-8. Push to the branch (`git push origin feature/amazing-feature`)
-9. Open a Pull Request
-
-### Code Standards
-
-- Follow the [Elixir Style Guide](https://github.com/christopheradams/elixir_style_guide)
-- Maintain >90% test coverage
-- Document all public functions with `@doc` and `@spec`
-- Zero compilation warnings
-- All new features must include tests
+---
 
 ## Research Foundation
 
@@ -299,11 +449,25 @@ CNS is based on research in:
 - Multi-agent debate systems for AI alignment
 - Evidence-grounded natural language inference
 - Claim verification and fact-checking
+- Topological data analysis for semantic structure
 
 Key theoretical contributions:
 - **Convergence Theorem**: Proof that the dialectical process terminates
 - **Synthesis Quality Bounds**: Theoretical guarantees on output coherence
 - **Evidence Chain Validity**: Formal model for citation trustworthiness
+- **Topology-Logic Correlation**: β₁ surrogates predict logical validity
+
+---
+
+## Related Repositories
+
+| Repository | Purpose |
+|------------|---------|
+| [crucible_framework](https://github.com/North-Shore-AI/crucible_framework) | Experiment engine with IR and pipeline |
+| [cns_experiments](https://github.com/North-Shore-AI/cns_experiments) | CNS + Crucible integration harness |
+| [tinkex](https://github.com/North-Shore-AI/tinkex) | Tinker SDK for LoRA training |
+
+---
 
 ## License
 
@@ -320,6 +484,8 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+---
 
 ## Acknowledgments
 
