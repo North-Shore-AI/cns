@@ -53,6 +53,7 @@ defmodule CNS.MixProject do
       {:uuid, "~> 1.1"},
       {:libgraph, "~> 0.16"},
       {:telemetry, "~> 1.2"},
+      {:ex_topology, "~> 0.1.1"},
 
       # ML/NLP dependencies for semantic validation (optional)
       {:bumblebee, "~> 0.5", optional: true},
