@@ -36,6 +36,7 @@ defmodule CNS.Topology.Adapter do
   """
 
   alias CNS.SNO
+  alias ExTopology.Neighborhood
   require Logger
 
   @type embedding_source ::
@@ -203,42 +204,34 @@ defmodule CNS.Topology.Adapter do
   def claim_graph(embeddings, :knn, opts) do
     k = Keyword.get(opts, :k, 5)
     metric = Keyword.get(opts, :metric, :euclidean)
+    weighted = Keyword.get(opts, :weighted, false)
+    mutual = Keyword.get(opts, :mutual, false)
 
-    # TODO: ExTopology library not yet available
-    # ExTopology.Neighborhood.knn_graph(embeddings, k: k, metric: metric)
-    raise "ExTopology library not yet available"
+    Neighborhood.knn_graph(embeddings, k: k, metric: metric, weighted: weighted, mutual: mutual)
   end
 
   def claim_graph(embeddings, :epsilon, opts) do
-    epsilon = Keyword.get(opts, :epsilon)
-
-    if is_nil(epsilon) do
-      raise ArgumentError, "epsilon is required for :epsilon strategy"
-    end
-
+    epsilon = Keyword.fetch!(opts, :epsilon)
     metric = Keyword.get(opts, :metric, :euclidean)
-    # TODO: ExTopology library not yet available
-    # ExTopology.Neighborhood.epsilon_graph(embeddings, epsilon: epsilon, metric: metric)
-    raise "ExTopology library not yet available"
+    weighted = Keyword.get(opts, :weighted, false)
+    strict = Keyword.get(opts, :strict, false)
+
+    Neighborhood.epsilon_graph(embeddings,
+      epsilon: epsilon,
+      metric: metric,
+      weighted: weighted,
+      strict: strict
+    )
   end
 
   def claim_graph(embeddings, :gabriel, opts) do
-    metric = Keyword.get(opts, :metric, :euclidean)
-    # TODO: ExTopology library not yet available
-    # ExTopology.Neighborhood.gabriel_graph(embeddings, metric: metric)
-    raise "ExTopology library not yet available"
+    weighted = Keyword.get(opts, :weighted, false)
+    Neighborhood.gabriel_graph(embeddings, weighted: weighted)
   end
 
-  def claim_graph(embeddings, :delaunay, _opts) do
-    # Note: delaunay_graph may not be available in all ex_topology versions
-    # Fall back to k-NN if not available
-    # TODO: ExTopology library not yet available
-    # if function_exported?(ExTopology.Neighborhood, :delaunay_graph, 1) do
-    #   ExTopology.Neighborhood.delaunay_graph(embeddings)
-    # else
-    Logger.warning("delaunay_graph not available, falling back to k-NN with k=5")
-    claim_graph(embeddings, :knn, k: 5)
-    # end
+  def claim_graph(embeddings, :delaunay, opts) do
+    Logger.warning("delaunay_graph not available, falling back to gabriel_graph")
+    claim_graph(embeddings, :gabriel, opts)
   end
 
   # ============================================================================

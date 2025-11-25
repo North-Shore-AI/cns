@@ -135,22 +135,22 @@ defmodule CNS.Topology.Fragility do
 
       # Compute point removal sensitivity
       removal_scores =
-        Fragility.point_removal_sensitivity(embeddings,
+        ExTopology.Fragility.point_removal_sensitivity(embeddings,
           max_dimension: max_dim,
           metric: :bottleneck
         )
 
       # Identify critical points
       critical_indices =
-        Fragility.identify_critical_points(removal_scores,
+        ExTopology.Fragility.identify_critical_points(removal_scores,
           top_k: min(top_k, length(snos))
         )
 
       # Overall robustness
-      robustness = Fragility.robustness_score(embeddings)
+      robustness = ExTopology.Fragility.robustness_score(embeddings)
 
       # Bottleneck stability
-      stability = Fragility.bottleneck_stability(embeddings, num_samples: 10)
+      stability = ExTopology.Fragility.bottleneck_stability(embeddings, num_samples: 10)
 
       # Build result
       %{
@@ -225,7 +225,7 @@ defmodule CNS.Topology.Fragility do
     embeddings = Adapter.sno_embeddings(snos, Keyword.get(opts, :embedding_opts, []))
 
     # Compute local fragility
-    local = Fragility.local_fragility(embeddings, claim_index, k: k)
+    local = ExTopology.Fragility.local_fragility(embeddings, claim_index, k: k)
 
     # Build result
     %{
@@ -271,7 +271,7 @@ defmodule CNS.Topology.Fragility do
       1.0
     else
       embeddings = Adapter.sno_embeddings(snos, Keyword.get(opts, :embedding_opts, []))
-      Fragility.robustness_score(embeddings) |> Float.round(4)
+      ExTopology.Fragility.robustness_score(embeddings) |> Float.round(4)
     end
   end
 
@@ -312,13 +312,13 @@ defmodule CNS.Topology.Fragility do
       embeddings = Adapter.sno_embeddings(snos, Keyword.get(opts, :embedding_opts, []))
 
       removal_scores =
-        Fragility.point_removal_sensitivity(embeddings,
+        ExTopology.Fragility.point_removal_sensitivity(embeddings,
           max_dimension: max_dim,
           metric: :bottleneck
         )
 
       critical_indices =
-        Fragility.identify_critical_points(removal_scores,
+        ExTopology.Fragility.identify_critical_points(removal_scores,
           top_k: min(top_k, length(snos))
         )
 
@@ -430,7 +430,7 @@ defmodule CNS.Topology.Fragility do
     {fragility_works, warnings} =
       if embeddings && length(snos) >= 3 do
         try do
-          _rob = Fragility.robustness_score(embeddings)
+          _rob = ExTopology.Fragility.robustness_score(embeddings)
           {true, warnings}
         rescue
           e ->
@@ -444,7 +444,7 @@ defmodule CNS.Topology.Fragility do
     {removal_works, warnings} =
       if embeddings && fragility_works do
         try do
-          _scores = Fragility.point_removal_sensitivity(embeddings, max_dimension: 1)
+          _scores = ExTopology.Fragility.point_removal_sensitivity(embeddings, max_dimension: 1)
           {true, warnings}
         rescue
           e ->

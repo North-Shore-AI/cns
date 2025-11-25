@@ -37,7 +37,7 @@ defmodule CNS do
   """
 
   alias CNS.{SNO, Config}
-  alias CNS.Agents.{Proposer, Antagonist, Synthesizer, Pipeline}
+  alias CNS.Agents.{Proposer, Synthesizer, Pipeline}
 
   @doc """
   Synthesize two conflicting claims into a coherent synthesis.
@@ -112,7 +112,7 @@ defmodule CNS do
   """
   @spec validate(SNO.t(), corpus :: [map()], opts :: keyword()) ::
           {:ok, map()} | {:error, term()}
-  def validate(sno, corpus, opts \\ []) do
+  def validate(sno, _corpus, _opts \\ []) do
     # TODO: Implement proper validation wrapper
     # For now, just return a success tuple
     {:ok, %{valid: true, sno: sno}}

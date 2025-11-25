@@ -39,8 +39,7 @@ defmodule CNS.Topology.Persistence do
   """
 
   alias CNS.SNO
-  # TODO: ExTopology library not yet available
-  # alias ExTopology.{Filtration, Persistence, Diagram}
+  alias ExTopology.Diagram
 
   require Logger
 
@@ -48,7 +47,7 @@ defmodule CNS.Topology.Persistence do
           cluster_analysis: cluster_analysis(),
           circular_reasoning: circular_reasoning(),
           higher_order: higher_order(),
-          diagrams: [Diagram.persistence_diagram()],
+          diagrams: [Diagram.diagram()],
           summary: summary()
         }
 
@@ -156,7 +155,7 @@ defmodule CNS.Topology.Persistence do
 
     # Build Vietoris-Rips filtration
     filtration =
-      Filtration.vietoris_rips(embeddings,
+      ExTopology.Filtration.vietoris_rips(embeddings,
         max_dimension: max_dim,
         max_epsilon: max_epsilon
       )
@@ -164,7 +163,7 @@ defmodule CNS.Topology.Persistence do
     Logger.debug("Built filtration with #{length(filtration)} simplices")
 
     # Compute persistence
-    diagrams = Persistence.compute(filtration, max_dimension: max_dim)
+    diagrams = ExTopology.Persistence.compute(filtration, max_dimension: max_dim)
 
     # Interpret results in CNS context
     interpret_diagrams(diagrams, snos, pers_threshold)
@@ -193,7 +192,7 @@ defmodule CNS.Topology.Persistence do
       true
   """
   @spec compute_from_embeddings(Nx.Tensor.t(), keyword()) :: %{
-          diagrams: [Diagram.persistence_diagram()],
+          diagrams: [Diagram.diagram()],
           statistics: map()
         }
   def compute_from_embeddings(embeddings, opts \\ []) do
@@ -201,12 +200,12 @@ defmodule CNS.Topology.Persistence do
     max_epsilon = Keyword.get(opts, :max_epsilon, @default_max_epsilon)
 
     filtration =
-      Filtration.vietoris_rips(embeddings,
+      ExTopology.Filtration.vietoris_rips(embeddings,
         max_dimension: max_dim,
         max_epsilon: max_epsilon
       )
 
-    diagrams = Persistence.compute(filtration, max_dimension: max_dim)
+    diagrams = ExTopology.Persistence.compute(filtration, max_dimension: max_dim)
 
     %{
       diagrams: diagrams,
@@ -265,8 +264,8 @@ defmodule CNS.Topology.Persistence do
     distances =
       Enum.zip(result1.diagrams, result2.diagrams)
       |> Enum.map(fn {d1, d2} ->
-        bottleneck = Diagram.bottleneck_distance(d1, d2)
-        wasserstein = Diagram.wasserstein_distance(d1, d2, p: wasserstein_p)
+        bottleneck = ExTopology.Diagram.bottleneck_distance(d1, d2)
+        wasserstein = ExTopology.Diagram.wasserstein_distance(d1, d2, p: wasserstein_p)
 
         %{
           dimension: d1.dimension,
@@ -324,8 +323,9 @@ defmodule CNS.Topology.Persistence do
       |> Enum.map(fn {d1, d2} ->
         %{
           dimension: d1.dimension,
-          bottleneck: Diagram.bottleneck_distance(d1, d2),
-          wasserstein: Diagram.wasserstein_distance(d1, d2, p: Keyword.get(opts, :wasserstein_p, 2))
+          bottleneck: ExTopology.Diagram.bottleneck_distance(d1, d2),
+          wasserstein:
+            ExTopology.Diagram.wasserstein_distance(d1, d2, p: Keyword.get(opts, :wasserstein_p, 2))
         }
       end)
 
@@ -461,7 +461,7 @@ defmodule CNS.Topology.Persistence do
   # ============================================================================
 
   # Interpret persistence diagrams in CNS context
-  @spec interpret_diagrams([Diagram.persistence_diagram()], [SNO.t()], float()) ::
+  @spec interpret_diagrams([Diagram.diagram()], [SNO.t()], float()) ::
           persistence_result()
   defp interpret_diagrams(diagrams, snos, pers_threshold) do
     h0 = Enum.find(diagrams, &(&1.dimension == 0)) || %{dimension: 0, pairs: []}
@@ -485,14 +485,14 @@ defmodule CNS.Topology.Persistence do
   end
 
   # Analyze H₀ (connected components / claim clusters)
-  @spec analyze_clusters(Diagram.persistence_diagram(), [SNO.t()], float()) :: cluster_analysis()
+  @spec analyze_clusters(Diagram.diagram(), [SNO.t()], float()) :: cluster_analysis()
   defp analyze_clusters(h0, _snos, pers_threshold) do
     total_clusters = length(h0.pairs)
-    persistent_pairs = Diagram.filter_by_persistence(h0, min: pers_threshold)
+    persistent_pairs = ExTopology.Diagram.filter_by_persistence(h0, min: pers_threshold)
     persistent_clusters = length(persistent_pairs.pairs)
 
-    cluster_stability = Diagram.total_persistence(h0)
-    cluster_entropy = Diagram.entropy(h0)
+    cluster_stability = ExTopology.Diagram.total_persistence(h0)
+    cluster_entropy = ExTopology.Diagram.entropy(h0)
 
     %{
       total_clusters: total_clusters,
@@ -503,13 +503,13 @@ defmodule CNS.Topology.Persistence do
   end
 
   # Analyze H₁ (cycles / circular reasoning)
-  @spec analyze_cycles(Diagram.persistence_diagram(), [SNO.t()], float()) :: circular_reasoning()
+  @spec analyze_cycles(Diagram.diagram(), [SNO.t()], float()) :: circular_reasoning()
   defp analyze_cycles(h1, _snos, pers_threshold) do
     detected_cycles = length(h1.pairs)
-    persistent_pairs = Diagram.filter_by_persistence(h1, min: pers_threshold)
+    persistent_pairs = ExTopology.Diagram.filter_by_persistence(h1, min: pers_threshold)
     persistent_cycles = length(persistent_pairs.pairs)
 
-    stats = Diagram.summary_statistics(h1)
+    stats = ExTopology.Diagram.summary_statistics(h1)
     max_persistence = stats.max_persistence
     cycle_severity = stats.total_persistence
 
@@ -525,11 +525,11 @@ defmodule CNS.Topology.Persistence do
   end
 
   # Analyze H₂ (voids / higher-order structures)
-  @spec analyze_higher_order(Diagram.persistence_diagram(), float()) :: higher_order()
+  @spec analyze_higher_order(Diagram.diagram(), float()) :: higher_order()
   defp analyze_higher_order(h2, _pers_threshold) do
     voids = length(h2.pairs)
-    complexity = Diagram.entropy(h2)
-    stats = Diagram.summary_statistics(h2)
+    complexity = ExTopology.Diagram.entropy(h2)
+    stats = ExTopology.Diagram.summary_statistics(h2)
 
     %{
       voids: voids,
@@ -543,7 +543,7 @@ defmodule CNS.Topology.Persistence do
           cluster_analysis(),
           circular_reasoning(),
           higher_order(),
-          [Diagram.persistence_diagram()],
+          [Diagram.diagram()],
           float()
         ) ::
           summary()
@@ -556,7 +556,7 @@ defmodule CNS.Topology.Persistence do
     significant_features =
       diagrams
       |> Enum.map(fn d ->
-        Diagram.filter_by_persistence(d, min: pers_threshold)
+        ExTopology.Diagram.filter_by_persistence(d, min: pers_threshold)
         |> Map.get(:pairs)
         |> length()
       end)
@@ -616,11 +616,11 @@ defmodule CNS.Topology.Persistence do
   end
 
   # Compute basic statistics for diagrams
-  @spec compute_diagram_statistics([Diagram.persistence_diagram()]) :: map()
+  @spec compute_diagram_statistics([Diagram.diagram()]) :: map()
   defp compute_diagram_statistics(diagrams) do
     diagrams
     |> Enum.map(fn d ->
-      stats = Diagram.summary_statistics(d)
+      stats = ExTopology.Diagram.summary_statistics(d)
       {d.dimension, stats}
     end)
     |> Map.new()

@@ -455,7 +455,7 @@ defmodule CNS.Topology do
       # => %{beta1: 2, cycles: [...], dag?: false}
   """
   @spec analyze_claim_network([SNO.t()], keyword()) :: map()
-  def analyze_claim_network(snos, opts \\ []) do
+  def analyze_claim_network(snos, _opts \\ []) do
     # Extract causal links from SNOs
     graph = build_graph(snos)
     cycles = detect_cycles(graph)
@@ -474,7 +474,7 @@ defmodule CNS.Topology do
   Detect circular reasoning in SNO or collection.
   """
   @spec detect_circular_reasoning(SNO.t() | [SNO.t()]) ::
-    {:ok, [term()]} | {:error, term()}
+          {:ok, [term()]} | {:error, term()}
   def detect_circular_reasoning(sno_or_snos) do
     snos = if is_list(sno_or_snos), do: sno_or_snos, else: [sno_or_snos]
 
@@ -497,10 +497,11 @@ defmodule CNS.Topology do
 
   def fragility(snos, opts) when is_list(snos) do
     # Extract embeddings if available
-    embeddings = Enum.map(snos, fn sno ->
-      Map.get(sno, :embedding, nil)
-    end)
-    |> Enum.reject(&is_nil/1)
+    embeddings =
+      Enum.map(snos, fn sno ->
+        Map.get(sno, :embedding, nil)
+      end)
+      |> Enum.reject(&is_nil/1)
 
     if Enum.empty?(embeddings) do
       0.0
@@ -540,5 +541,4 @@ defmodule CNS.Topology do
         raise "Full TDA (exact β₁) not yet implemented. Use mode: :surrogate"
     end
   end
-
 end

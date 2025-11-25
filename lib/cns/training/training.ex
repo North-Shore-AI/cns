@@ -13,7 +13,8 @@ defmodule CNS.Training do
   @type dataset :: %{
           train: [map()],
           validation: [map()],
-          test: [map()] | nil
+          test: [map()] | nil,
+          metadata: map()
         }
 
   @type training_context :: map()
@@ -26,7 +27,7 @@ defmodule CNS.Training do
   - `:train_ratio` - Training data ratio (default: 0.7)
   - `:val_ratio` - Validation data ratio (default: 0.2)
   """
-  @spec prepare_dataset([SNO.t()], keyword()) :: {:ok, dataset} | {:error, term()}
+  @spec prepare_dataset([SNO.t()], keyword()) :: {:ok, dataset()}
   def prepare_dataset(snos, opts \\ []) when is_list(snos) do
     format = Keyword.get(opts, :format, :dialectical)
 
@@ -64,7 +65,7 @@ defmodule CNS.Training do
   NOTE: This is a stub implementation. Returns a mock context.
   """
   @spec train(dataset, keyword()) :: {:ok, training_context} | {:error, term()}
-  def train(dataset, opts \\ []) do
+  def train(_dataset, _opts \\ []) do
     Logger.warning("CNS.Training.train/2 is a stub implementation - Crucible IR not available")
 
     # Return a mock training context

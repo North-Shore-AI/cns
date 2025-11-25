@@ -381,9 +381,8 @@ defmodule CNS.Metrics do
   """
   @spec convergence_score(previous :: SNO.t(), current :: SNO.t()) :: float()
   def convergence_score(%SNO{} = prev_sno, %SNO{} = curr_sno) do
-    confidence_delta = abs(
-      Map.get(curr_sno, :confidence, 0.0) - Map.get(prev_sno, :confidence, 0.0)
-    )
+    confidence_delta =
+      abs(Map.get(curr_sno, :confidence, 0.0) - Map.get(prev_sno, :confidence, 0.0))
 
     # Simple convergence: 1.0 - change in confidence
     max(0.0, 1.0 - confidence_delta)
@@ -401,7 +400,7 @@ defmodule CNS.Metrics do
   - Mean entailment ≥ 0.50
   """
   @spec overall_quality(SNO.t(), keyword()) :: map()
-  def overall_quality(%SNO{} = sno, opts \\ []) do
+  def overall_quality(%SNO{} = sno, _opts \\ []) do
     quality = quality_score(sno)
 
     %{
