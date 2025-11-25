@@ -35,7 +35,7 @@ defmodule CNSTest do
 
   describe "version/0" do
     test "returns version string" do
-      assert CNS.version() == "0.1.0"
+      assert CNS.version() == "0.2.0"
     end
   end
 end

@@ -39,7 +39,8 @@ defmodule CNS.Topology.Persistence do
   """
 
   alias CNS.SNO
-  alias ExTopology.{Filtration, Persistence, Diagram}
+  # TODO: ExTopology library not yet available
+  # alias ExTopology.{Filtration, Persistence, Diagram}
 
   require Logger
 

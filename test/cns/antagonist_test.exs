@@ -1,7 +1,8 @@
 defmodule CNS.AntagonistTest do
   use ExUnit.Case, async: true
 
-  alias CNS.{Antagonist, SNO, Challenge, Evidence, Config}
+  alias CNS.{SNO, Challenge, Evidence, Config}
+  alias CNS.Agents.Antagonist
 
   describe "challenge/2" do
     test "generates challenges for a claim" do

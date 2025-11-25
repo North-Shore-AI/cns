@@ -44,7 +44,8 @@ defmodule CNS.Topology.Fragility do
       # => 0.82 (high impact - removing this claim destabilizes network)
   """
 
-  alias ExTopology.Fragility
+  # TODO: ExTopology library not yet available
+  # alias ExTopology.Fragility
   alias CNS.Topology.Adapter
   alias CNS.SNO
 

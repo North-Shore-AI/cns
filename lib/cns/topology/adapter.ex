@@ -204,7 +204,9 @@ defmodule CNS.Topology.Adapter do
     k = Keyword.get(opts, :k, 5)
     metric = Keyword.get(opts, :metric, :euclidean)
 
-    ExTopology.Neighborhood.knn_graph(embeddings, k: k, metric: metric)
+    # TODO: ExTopology library not yet available
+    # ExTopology.Neighborhood.knn_graph(embeddings, k: k, metric: metric)
+    raise "ExTopology library not yet available"
   end
 
   def claim_graph(embeddings, :epsilon, opts) do
@@ -215,23 +217,28 @@ defmodule CNS.Topology.Adapter do
     end
 
     metric = Keyword.get(opts, :metric, :euclidean)
-    ExTopology.Neighborhood.epsilon_graph(embeddings, epsilon: epsilon, metric: metric)
+    # TODO: ExTopology library not yet available
+    # ExTopology.Neighborhood.epsilon_graph(embeddings, epsilon: epsilon, metric: metric)
+    raise "ExTopology library not yet available"
   end
 
   def claim_graph(embeddings, :gabriel, opts) do
     metric = Keyword.get(opts, :metric, :euclidean)
-    ExTopology.Neighborhood.gabriel_graph(embeddings, metric: metric)
+    # TODO: ExTopology library not yet available
+    # ExTopology.Neighborhood.gabriel_graph(embeddings, metric: metric)
+    raise "ExTopology library not yet available"
   end
 
   def claim_graph(embeddings, :delaunay, _opts) do
     # Note: delaunay_graph may not be available in all ex_topology versions
     # Fall back to k-NN if not available
-    if function_exported?(ExTopology.Neighborhood, :delaunay_graph, 1) do
-      ExTopology.Neighborhood.delaunay_graph(embeddings)
-    else
-      Logger.warning("delaunay_graph not available, falling back to k-NN with k=5")
-      claim_graph(embeddings, :knn, k: 5)
-    end
+    # TODO: ExTopology library not yet available
+    # if function_exported?(ExTopology.Neighborhood, :delaunay_graph, 1) do
+    #   ExTopology.Neighborhood.delaunay_graph(embeddings)
+    # else
+    Logger.warning("delaunay_graph not available, falling back to k-NN with k=5")
+    claim_graph(embeddings, :knn, k: 5)
+    # end
   end
 
   # ============================================================================

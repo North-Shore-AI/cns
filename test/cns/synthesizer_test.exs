@@ -1,7 +1,8 @@
 defmodule CNS.SynthesizerTest do
   use ExUnit.Case, async: true
 
-  alias CNS.{Synthesizer, SNO, Evidence, Challenge, Config}
+  alias CNS.{SNO, Evidence, Challenge, Config}
+  alias CNS.Agents.Synthesizer
 
   describe "synthesize/3" do
     test "synthesizes two claims" do
