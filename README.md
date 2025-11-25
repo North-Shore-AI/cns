@@ -90,6 +90,16 @@ IO.puts(synthesis.claim)
 #     intentional collaboration structures to maintain team effectiveness"
 ```
 
+### Extract Claims from Text
+
+```elixir
+# High-level API
+{:ok, claims} = CNS.extract_claims(scientific_text)
+
+# Or using agents directly
+{:ok, claims} = CNS.Agents.Proposer.extract_claims(scientific_text)
+```
+
 ### Using the Three-Agent Pipeline
 
 ```elixir
@@ -103,26 +113,37 @@ config = %CNS.Config{
 }
 
 # Process a research question
-{:ok, result} = CNS.Pipeline.run(
+{:ok, result} = CNS.run_pipeline(
   "What are the effects of caffeine on cognitive performance?",
   config
 )
 
 # Access the synthesized knowledge
-IO.inspect(result.final_synthesis)
-IO.inspect(result.evidence_chain)
+IO.inspect(result.final_sno)
+IO.inspect(result.trace)
 IO.inspect(result.convergence_score)
 ```
 
-### Claim Extraction from Text
+### Topology Analysis
 
 ```elixir
-text = """
-Recent studies suggest that intermittent fasting may improve metabolic health.
-However, some researchers caution that the long-term effects are not well understood.
-"""
+# Analyze claim network for circular reasoning
+analysis = CNS.Topology.analyze_claim_network(claims)
+# => %{beta1: 2, dag?: false}
 
-{:ok, claims} = CNS.Proposer.extract_claims(text)
+# Compute fragility of claims
+fragility = CNS.Topology.fragility(claims)
+# => 0.45
+```
+
+### Metrics
+
+```elixir
+# Compute chirality between opposing claims
+chirality = CNS.Metrics.chirality(claim_a, claim_b)
+
+# Measure evidence overlap
+entanglement = CNS.Metrics.evidential_entanglement(claim_a, claim_b)
 
 Enum.each(claims, fn claim ->
   IO.puts("Claim: #{claim.claim}")

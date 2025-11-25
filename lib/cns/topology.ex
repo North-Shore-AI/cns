@@ -13,6 +13,7 @@ defmodule CNS.Topology do
   """
 
   alias CNS.{SNO, Provenance}
+  alias CNS.Topology.Surrogates
 
   @doc """
   Build a graph from a list of SNOs based on provenance relationships.
@@ -440,4 +441,104 @@ defmodule CNS.Topology do
 
     do_kahn_sort(graph, rest ++ new_queue_additions, new_in_degrees, [node | result])
   end
+
+  # New facade functions for simplified API
+
+  @doc """
+  Analyze claim network for circular reasoning.
+
+  Returns β₁ approximation (number of independent cycles).
+
+  ## Examples
+
+      analysis = CNS.Topology.analyze_claim_network(claims)
+      # => %{beta1: 2, cycles: [...], dag?: false}
+  """
+  @spec analyze_claim_network([SNO.t()], keyword()) :: map()
+  def analyze_claim_network(snos, opts \\ []) do
+    # Extract causal links from SNOs
+    graph = build_graph(snos)
+    cycles = detect_cycles(graph)
+    beta1 = length(cycles)
+
+    %{
+      beta1: beta1,
+      dag?: beta1 == 0,
+      sno_count: length(snos),
+      cycles: cycles,
+      link_count: count_edges(graph)
+    }
+  end
+
+  @doc """
+  Detect circular reasoning in SNO or collection.
+  """
+  @spec detect_circular_reasoning(SNO.t() | [SNO.t()]) ::
+    {:ok, [term()]} | {:error, term()}
+  def detect_circular_reasoning(sno_or_snos) do
+    snos = if is_list(sno_or_snos), do: sno_or_snos, else: [sno_or_snos]
+
+    analysis = analyze_claim_network(snos)
+
+    if analysis.beta1 > 0 do
+      {:ok, [%{type: :circular_reasoning, beta1: analysis.beta1, cycles: analysis.cycles}]}
+    else
+      {:ok, []}
+    end
+  end
+
+  @doc """
+  Compute fragility of claims under semantic perturbation.
+
+  Delegates to Surrogates module for efficient computation.
+  """
+  @spec fragility([SNO.t()] | SNO.t(), keyword()) :: float()
+  def fragility(snos_or_sno, opts \\ [])
+
+  def fragility(snos, opts) when is_list(snos) do
+    # Extract embeddings if available
+    embeddings = Enum.map(snos, fn sno ->
+      Map.get(sno, :embedding, nil)
+    end)
+    |> Enum.reject(&is_nil/1)
+
+    if Enum.empty?(embeddings) do
+      0.0
+    else
+      Surrogates.compute_fragility_surrogate(embeddings, opts)
+    end
+  end
+
+  def fragility(sno, opts) when is_map(sno) do
+    fragility([sno], opts)
+  end
+
+  @doc """
+  Compute β₁ with specified mode.
+
+  ## Options
+
+  - `:mode` - :surrogate (default) or :exact
+  """
+  @spec beta1([SNO.t()] | term(), keyword()) :: non_neg_integer()
+  def beta1(snos_or_graph, opts \\ []) do
+    mode = Keyword.get(opts, :mode, :surrogate)
+
+    case mode do
+      :surrogate ->
+        if is_list(snos_or_graph) do
+          analysis = analyze_claim_network(snos_or_graph)
+          analysis.beta1
+        else
+          # Assume it's a graph
+          cycles = detect_cycles(snos_or_graph)
+          length(cycles)
+        end
+
+      :exact ->
+        # Full TDA not implemented yet
+        raise "Full TDA (exact β₁) not yet implemented. Use mode: :surrogate"
+    end
+  end
+
 end

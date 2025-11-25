@@ -340,4 +340,74 @@ defmodule CNS.Metrics do
     total = Enum.sum(Enum.map(snos, & &1.confidence))
     Float.round(total / length(snos), 4)
   end
+
+  # New facade functions for enhanced metrics
+
+  @doc """
+  Compute evidential entanglement between claims.
+
+  Measures evidence set overlap for opposing hypotheses.
+  High entanglement + high chirality = productive dialectical conflict.
+
+  ## Formula
+
+      ε(A, B) = |E_A ∩ E_B| / |E_A ∪ E_B|
+
+  ## Examples
+
+      entanglement = CNS.Metrics.evidential_entanglement(claim_a, claim_b)
+      # => 0.45
+  """
+  @spec evidential_entanglement(SNO.t(), SNO.t()) :: float()
+  def evidential_entanglement(%SNO{} = sno_a, %SNO{} = sno_b) do
+    evidence_a = MapSet.new(Map.get(sno_a, :evidence, []))
+    evidence_b = MapSet.new(Map.get(sno_b, :evidence, []))
+
+    intersection = MapSet.intersection(evidence_a, evidence_b)
+    union = MapSet.union(evidence_a, evidence_b)
+
+    if MapSet.size(union) == 0 do
+      0.0
+    else
+      MapSet.size(intersection) / MapSet.size(union)
+    end
+  end
+
+  @doc """
+  Compute convergence score for dialectical iteration.
+
+  Returns score ∈ [0, 1] indicating convergence stability.
+  Score close to 1.0 indicates convergence.
+  """
+  @spec convergence_score(previous :: SNO.t(), current :: SNO.t()) :: float()
+  def convergence_score(%SNO{} = prev_sno, %SNO{} = curr_sno) do
+    confidence_delta = abs(
+      Map.get(curr_sno, :confidence, 0.0) - Map.get(prev_sno, :confidence, 0.0)
+    )
+
+    # Simple convergence: 1.0 - change in confidence
+    max(0.0, 1.0 - confidence_delta)
+  end
+
+  @doc """
+  Compute overall quality score per CNS 3.0 targets.
+
+  Combines schema compliance, citation accuracy, and entailment.
+
+  ## CNS 3.0 Targets
+
+  - Schema compliance ≥ 95%
+  - Citation accuracy ≥ 95%
+  - Mean entailment ≥ 0.50
+  """
+  @spec overall_quality(SNO.t(), keyword()) :: map()
+  def overall_quality(%SNO{} = sno, opts \\ []) do
+    quality = quality_score(sno)
+
+    %{
+      score: quality.overall,
+      meets_threshold: quality.overall >= 0.75,
+      breakdown: quality
+    }
+  end
 end

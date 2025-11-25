@@ -1,6 +1,12 @@
-defmodule CNS.Training do
+defmodule CNS.TrainingLegacy do
   @moduledoc """
-  Training integration for CNS with Tinkex LoRA fine-tuning.
+  DEPRECATED: This module uses legacy Crucible contracts.
+
+  Use the new CNS.Training module instead (in lib/cns/training/).
+
+  This module will be removed in v0.3.0.
+
+  Legacy training integration for CNS with Tinkex LoRA fine-tuning.
 
   Provides utilities for:
   - Dataset preparation for dialectical training
@@ -19,6 +25,8 @@ defmodule CNS.Training do
       # Train (requires Tinkex)
       {:ok, adapter} = CNS.Training.train(dataset, config)
   """
+
+  @deprecated "Use CNS.Training (in lib/cns/training/) instead"
 
   alias CNS.{SNO, Evidence}
 
