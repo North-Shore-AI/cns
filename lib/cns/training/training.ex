@@ -66,7 +66,7 @@ defmodule CNS.Training do
   """
   @spec train(dataset, keyword()) :: {:ok, training_context} | {:error, term()}
   def train(_dataset, _opts \\ []) do
-    Logger.warning("CNS.Training.train/2 is a stub implementation - Crucible IR not available")
+    Logger.debug("CNS.Training.train/2 stub implementation - Crucible IR not available")
 
     # Return a mock training context
     {:ok,

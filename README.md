@@ -127,14 +127,31 @@ IO.inspect(result.convergence_score)
 ### Topology Analysis
 
 ```elixir
-# Analyze claim network for circular reasoning
-analysis = CNS.Topology.analyze_claim_network(claims)
-# => %{beta1: 2, dag?: false}
+# Analyze claim network for circular reasoning (ex_topology-backed)
+graph = CNS.Topology.build_graph(claims)
+inv = CNS.Topology.invariants(graph)
+# => %{beta_zero: 1, beta_one: 2, ...}
+
+# Surrogate metrics (β₁ + fragility) from embeddings
+surrogates = CNS.Topology.surrogates(claims)
+# => %{beta1: 2, fragility: 0.31}
 
 # Compute fragility of claims
 fragility = CNS.Topology.fragility(claims)
 # => 0.45
+
+# Full persistent homology
+persistence = CNS.Topology.tda(claims, max_dimension: 2)
+# => %{summary: %{...}, diagrams: [...]}
 ```
+
+**Topology API (thin wrappers over `ex_topology`)**
+
+- `CNS.Topology.build_graph/1` – builds a libgraph graph from SNO provenance or adjacency maps.
+- `CNS.Topology.invariants/1` / `betti_numbers/1` – delegates to `ExTopology.Graph`.
+- `CNS.Topology.surrogates/2` – β₁ (graph cyclomatic) + embedding fragility via `ExTopology.Embedding`.
+- `CNS.Topology.tda/2` – full persistent homology via `CNS.Topology.Persistence` (`ExTopology.Persistence`).
+- `CNS.Topology.Fragility` – CNS-specific interpretation of `ExTopology.Fragility`.
 
 ### Metrics
 
@@ -230,13 +247,13 @@ score = Surrogates.compute_combined_score(beta1, fragility)
 
 ## Crucible Framework Integration
 
-The core `cns` library is **Crucible-agnostic**. Concrete adapters and wiring live in the `cns_experiments` application, which plugs into `Crucible.CNS` behaviours.
+The core `cns` library is **Crucible-agnostic**. Concrete adapters and wiring live in the glue app (`cns_crucible`, formerly `cns_experiments`), which plugs into `Crucible.CNS` behaviours.
 
 ### Integration Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                      cns_experiments                              │
+│                       cns_crucible                                │
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │  CnsExperiments.Adapters.Metrics    → Crucible.CNS.Adapter │ │
 │  │  CnsExperiments.Adapters.Surrogates → Crucible.CNS.SurrogateAdapter │
@@ -260,12 +277,12 @@ The core `cns` library is **Crucible-agnostic**. Concrete adapters and wiring li
 
 To use CNS metrics/topology inside Crucible experiments:
 
-1. **Depend on `cns_experiments`** (not `cns` directly for Crucible integration)
-2. **Configure adapters** in `cns_experiments/config/config.exs`
+1. **Depend on `cns_crucible`** (not `cns` directly for Crucible integration)
+2. **Configure adapters** in `cns_crucible/config/config.exs`
 3. **Run experiments** via the Crucible IR
 
 ```elixir
-# In cns_experiments
+# In cns_crucible
 CnsExperiments.Experiments.ScifactClaimExtraction.run(
   batch_size: 4,
   limit: 100
@@ -485,7 +502,7 @@ Key theoretical contributions:
 | Repository | Purpose |
 |------------|---------|
 | [crucible_framework](https://github.com/North-Shore-AI/crucible_framework) | Experiment engine with IR and pipeline |
-| [cns_experiments](https://github.com/North-Shore-AI/cns_experiments) | CNS + Crucible integration harness |
+| [cns_crucible](https://github.com/North-Shore-AI/cns_crucible) | CNS + Crucible integration harness |
 | [tinkex](https://github.com/North-Shore-AI/tinkex) | Tinker SDK for LoRA training |
 
 ---

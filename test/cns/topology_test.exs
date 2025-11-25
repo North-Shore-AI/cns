@@ -2,6 +2,7 @@ defmodule CNS.TopologyTest do
   use ExUnit.Case, async: true
 
   alias CNS.{Topology, SNO, Provenance}
+  alias Graph
 
   describe "build_graph/1" do
     test "builds graph from SNOs" do
@@ -11,9 +12,9 @@ defmodule CNS.TopologyTest do
 
       graph = Topology.build_graph([s1, s2])
 
-      assert Map.has_key?(graph, "1")
-      assert Map.has_key?(graph, "2")
-      assert "2" in graph["1"]
+      assert Graph.has_vertex?(graph, "1")
+      assert Graph.has_vertex?(graph, "2")
+      assert Graph.edge(graph, "1", "2") != nil
     end
 
     test "handles multiple parents" do
@@ -24,8 +25,8 @@ defmodule CNS.TopologyTest do
 
       graph = Topology.build_graph([s1, s2, s3])
 
-      assert "3" in graph["1"]
-      assert "3" in graph["2"]
+      assert Graph.edge(graph, "1", "3") != nil
+      assert Graph.edge(graph, "2", "3") != nil
     end
 
     test "handles SNOs without provenance" do
@@ -34,8 +35,8 @@ defmodule CNS.TopologyTest do
 
       graph = Topology.build_graph([s1, s2])
 
-      assert graph["1"] == []
-      assert graph["2"] == []
+      assert Graph.out_neighbors(graph, "1") == []
+      assert Graph.out_neighbors(graph, "2") == []
     end
   end
 

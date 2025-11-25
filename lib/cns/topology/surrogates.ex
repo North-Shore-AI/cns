@@ -34,7 +34,10 @@ defmodule CNS.Topology.Surrogates do
       true
   """
 
-  require Logger
+  alias CNS.Topology.Adapter
+  alias ExTopology.Embedding
+  alias ExTopology.Graph, as: TopoGraph
+  alias Graph
 
   @doc """
   Compute β₁ surrogate using cycle detection on causal link graph.
@@ -63,31 +66,14 @@ defmodule CNS.Topology.Surrogates do
       iex> CNS.Topology.Surrogates.compute_beta1_surrogate(%{"a" => ["b"], "b" => ["a"]})
       1
   """
-  @spec compute_beta1_surrogate(map()) :: non_neg_integer()
-  def compute_beta1_surrogate(graph) when is_map(graph) do
-    # β₁ surrogate using cyclomatic number (edges - nodes + components).
-    # This is monotonic with respect to adding edges and correctly counts
-    # self-loops and multiple disjoint cycles.
-    if map_size(graph) == 0 do
+  @spec compute_beta1_surrogate(map() | Graph.t()) :: non_neg_integer()
+  def compute_beta1_surrogate(graph_like) do
+    graph = CNS.Topology.build_graph(graph_like)
+
+    if Graph.is_acyclic?(graph) do
       0
     else
-      {nodes, edge_count} =
-        Enum.reduce(graph, {MapSet.new(), 0}, fn {node, children}, {node_acc, edge_acc} ->
-          updated_nodes =
-            children
-            |> Enum.reduce(MapSet.put(node_acc, node), fn child, acc -> MapSet.put(acc, child) end)
-
-          {updated_nodes, edge_acc + length(children)}
-        end)
-
-      component_count = count_components(graph, nodes)
-
-      if has_cycle?(graph, nodes) do
-        beta1 = edge_count - MapSet.size(nodes) + component_count
-        max(beta1, 0)
-      else
-        0
-      end
+      TopoGraph.beta_one(graph)
     end
   end
 
@@ -128,26 +114,36 @@ defmodule CNS.Topology.Surrogates do
 
   def compute_fragility_surrogate(embeddings, opts) do
     k = Keyword.get(opts, :k, 5)
+    metric = Keyword.get(opts, :metric, :euclidean)
 
-    metric =
-      case Keyword.get(opts, :metric, :euclidean) do
-        :cosine -> :cosine
-        :euclidean -> :euclidean
-        _ -> :euclidean
-      end
-
-    tensor = ensure_tensor(embeddings)
+    tensor = Adapter.to_tensor(embeddings, type: :f32)
     {n_samples, _dim} = Nx.shape(tensor)
 
     cond do
       n_samples <= 1 ->
         0.0
 
-      n_samples <= k ->
-        compute_knn_variance(tensor, max(n_samples - 1, 1), metric)
-
       true ->
-        compute_knn_variance(tensor, min(k, n_samples - 1), metric)
+        neighbors = min(k, max(n_samples - 1, 1))
+
+        knn_dists =
+          Embedding.knn_distances(tensor,
+            k: neighbors,
+            metric: metric
+          )
+
+        variance =
+          knn_dists
+          |> Nx.variance(axes: [1])
+          |> Nx.mean()
+          |> Nx.to_number()
+
+        mean_distance =
+          knn_dists
+          |> Nx.mean()
+          |> Nx.to_number()
+
+        normalize_variance(variance + mean_distance)
     end
   end
 
@@ -183,11 +179,9 @@ defmodule CNS.Topology.Surrogates do
     beta1 = compute_beta1_from_links(Map.get(sno, :causal_links, []))
 
     fragility =
-      case Map.get(sno, :embeddings) do
-        nil -> 0.0
-        [] -> 0.0
-        embeddings -> compute_fragility_surrogate(embeddings, opts)
-      end
+      sno
+      |> Map.get(:embeddings, [])
+      |> compute_fragility_surrogate(opts)
 
     %{
       beta1: beta1,
@@ -256,177 +250,20 @@ defmodule CNS.Topology.Surrogates do
   # Private functions
 
   defp compute_beta1_from_links(links) do
-    # Build graph from causal links
     graph =
-      links
-      |> Enum.reduce(%{}, fn {source, target}, acc ->
-        acc
-        |> Map.update(source, [target], &[target | &1])
-        |> Map.put_new(target, [])
+      Enum.reduce(links, Graph.new(type: :directed), fn {source, target}, g ->
+        g
+        |> Graph.add_vertex(source)
+        |> Graph.add_vertex(target)
+        |> Graph.add_edge(source, target)
       end)
 
     compute_beta1_surrogate(graph)
   end
 
-  @spec count_components(%{optional(any()) => [any()]}, MapSet.t(any())) :: non_neg_integer()
-  defp count_components(graph, %MapSet{} = nodes) do
-    adjacency =
-      Enum.reduce(graph, %{}, fn {node, children}, acc ->
-        acc
-        |> Map.update(node, Enum.uniq(children), fn existing ->
-          existing
-          |> Kernel.++(children)
-          |> Enum.uniq()
-        end)
-        |> add_reverse_edges(node, children)
-      end)
-      |> ensure_all_nodes(nodes)
-
-    walk_components(%{}, Map.keys(adjacency), adjacency, 0)
-  end
-
-  defp add_reverse_edges(acc, _node, []), do: acc
-
-  defp add_reverse_edges(acc, node, [child | rest]) do
-    updated =
-      Map.update(acc, child, [node], fn existing ->
-        [node | existing] |> Enum.uniq()
-      end)
-
-    add_reverse_edges(updated, node, rest)
-  end
-
-  defp ensure_all_nodes(adjacency, %MapSet{} = nodes) do
-    nodes
-    |> MapSet.to_list()
-    |> Enum.reduce(adjacency, fn node, acc ->
-      Map.put_new(acc, node, [])
-    end)
-  end
-
-  @spec walk_components(map(), [any()], map(), non_neg_integer()) :: non_neg_integer()
-  defp walk_components(_visited, [], _adjacency, count), do: count
-
-  defp walk_components(visited, [node | rest], adjacency, count) do
-    if Map.has_key?(visited, node) do
-      walk_components(visited, rest, adjacency, count)
-    else
-      neighbors = Map.get(adjacency, node, [])
-      component_nodes = dfs(neighbors, adjacency, Map.put(visited, node, true))
-      walk_components(component_nodes, rest, adjacency, count + 1)
-    end
-  end
-
-  @spec dfs([any()], map(), map()) :: map()
-  defp dfs([], _adjacency, visited), do: visited
-
-  defp dfs([neighbor | rest], adjacency, visited) do
-    if Map.has_key?(visited, neighbor) do
-      dfs(rest, adjacency, visited)
-    else
-      next_neighbors = Map.get(adjacency, neighbor, [])
-      dfs(next_neighbors ++ rest, adjacency, Map.put(visited, neighbor, true))
-    end
-  end
-
-  defp ensure_tensor(embeddings) when is_struct(embeddings, Nx.Tensor), do: embeddings
-
-  defp ensure_tensor(embeddings) when is_list(embeddings) do
-    Nx.tensor(embeddings, type: :f32)
-  end
-
-  defp has_cycle?(graph, nodes) do
-    dg = :digraph.new()
-
-    try do
-      Enum.each(nodes, &:digraph.add_vertex(dg, &1))
-
-      Enum.each(graph, fn {from, children} ->
-        Enum.each(children, fn child ->
-          :digraph.add_vertex(dg, child)
-          :digraph.add_edge(dg, from, child)
-        end)
-      end)
-
-      not :digraph_utils.is_acyclic(dg)
-    after
-      :digraph.delete(dg)
-    end
-  end
-
-  @spec compute_knn_variance(Nx.Tensor.t(), pos_integer(), :euclidean | :cosine) :: float()
-  defp compute_knn_variance(tensor, k, metric) when metric in [:euclidean, :cosine] do
-    {n_samples, _} = Nx.shape(tensor)
-    distances = compute_distance_matrix(tensor, metric)
-
-    neighbor_means =
-      for i <- 0..(n_samples - 1) do
-        row =
-          distances[i]
-          |> Nx.to_flat_list()
-          |> Enum.reject(&(&1 == 0.0))
-          |> Enum.sort()
-          |> Enum.take(k)
-
-        case row do
-          [] -> 0.0
-          _ -> Enum.sum(row) / length(row)
-        end
-      end
-
-    mean_distance = Enum.sum(neighbor_means) / max(length(neighbor_means), 1)
-    normalize_fragility(mean_distance, metric)
-  end
-
-  @spec compute_distance_matrix(Nx.Tensor.t(), :euclidean | :cosine) :: Nx.Tensor.t()
-  defp compute_distance_matrix(tensor, :euclidean) do
-    # Compute Euclidean distance matrix
-    {_n, _} = Nx.shape(tensor)
-
-    # Expand dimensions for broadcasting
-    # Shape: {n, 1, d}
-    a = Nx.new_axis(tensor, 1)
-    # Shape: {1, n, d}
-    b = Nx.new_axis(tensor, 0)
-
-    # Compute squared differences
-    diff = Nx.subtract(a, b)
-    squared = Nx.multiply(diff, diff)
-    summed = Nx.sum(squared, axes: [2])
-
-    Nx.sqrt(summed)
-  end
-
-  defp compute_distance_matrix(tensor, :cosine) do
-    # Compute cosine distance matrix (1 - cosine_similarity)
-    {n, _} = Nx.shape(tensor)
-
-    # Normalize vectors
-    norms =
-      tensor
-      |> Nx.multiply(tensor)
-      |> Nx.sum(axes: [1])
-      |> Nx.sqrt()
-      |> Nx.reshape({n, 1})
-
-    normalized = Nx.divide(tensor, Nx.add(norms, 1.0e-8))
-
-    # Compute cosine similarity matrix
-    similarity = Nx.dot(normalized, [1], normalized, [1])
-
-    # Convert to distance (1 - similarity)
-    Nx.subtract(1.0, similarity)
-  end
-
-  @spec normalize_fragility(number(), :cosine | :euclidean) :: float()
-  defp normalize_fragility(distance, metric) when metric in [:cosine, :euclidean] do
-    max_distance =
-      case metric do
-        :cosine -> 2.0
-        :euclidean -> 1.5
-      end
-
-    score = distance / max_distance
+  defp normalize_variance(value) when is_number(value) do
+    scaled = value * 2.5
+    score = scaled / (scaled + 1.0)
     score |> min(1.0) |> max(0.0) |> Float.round(4)
   end
 

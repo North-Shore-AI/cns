@@ -16,6 +16,8 @@ defmodule CNS.Graph.Topology do
       true
   """
 
+  alias ExTopology.Graph, as: TopoGraph
+
   @doc """
   Check if graph is acyclic (no circular reasoning).
   """
@@ -40,9 +42,7 @@ defmodule CNS.Graph.Topology do
   """
   @spec num_components(Graph.t()) :: non_neg_integer()
   def num_components(graph) do
-    graph
-    |> Graph.components()
-    |> length()
+    TopoGraph.beta_zero(graph)
   end
 
   @doc """
@@ -72,18 +72,8 @@ defmodule CNS.Graph.Topology do
   """
   @spec betti_numbers(Graph.t()) :: %{b0: non_neg_integer(), b1: non_neg_integer()}
   def betti_numbers(graph) do
-    v = Graph.num_vertices(graph)
-    e = Graph.num_edges(graph)
-    components = num_components(graph)
-
-    # b0 = number of connected components
-    b0 = components
-
-    # b1 = e - v + components (Euler characteristic for planar graphs)
-    # This gives the number of independent cycles
-    b1 = max(0, e - v + components)
-
-    %{b0: b0, b1: b1}
+    inv = TopoGraph.invariants(graph)
+    %{b0: inv.beta_zero, b1: inv.beta_one}
   end
 
   @doc """
@@ -209,10 +199,6 @@ defmodule CNS.Graph.Topology do
   end
 
   defp is_tree?(graph) do
-    v = Graph.num_vertices(graph)
-    e = Graph.num_edges(graph)
-
-    # A tree has exactly v-1 edges and is connected
-    e == v - 1 and num_components(graph) == 1
+    TopoGraph.tree?(graph)
   end
 end
