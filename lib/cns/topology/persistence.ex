@@ -342,7 +342,7 @@ defmodule CNS.Topology.Persistence do
       total_distance: total_distance,
       wasserstein_distances: distances,
       topologically_similar?: similar?,
-      interpretation: "Distance from baseline: #{Float.round(total_distance, 3)}"
+      interpretation: "Distance from baseline: #{round_float(total_distance, 3)}"
     }
   end
 
@@ -497,8 +497,8 @@ defmodule CNS.Topology.Persistence do
     %{
       total_clusters: total_clusters,
       persistent_clusters: persistent_clusters,
-      cluster_stability: Float.round(cluster_stability, 4),
-      cluster_entropy: Float.round(cluster_entropy, 4)
+      cluster_stability: round_float(cluster_stability, 4),
+      cluster_entropy: round_float(cluster_entropy, 4)
     }
   end
 
@@ -518,8 +518,8 @@ defmodule CNS.Topology.Persistence do
     %{
       detected_cycles: detected_cycles,
       persistent_cycles: persistent_cycles,
-      cycle_severity: Float.round(cycle_severity, 4),
-      max_cycle_persistence: Float.round(max_persistence, 4),
+      cycle_severity: round_float(cycle_severity, 4),
+      max_cycle_persistence: round_float(max_persistence, 4),
       interpretation: interpretation
     }
   end
@@ -533,8 +533,8 @@ defmodule CNS.Topology.Persistence do
 
     %{
       voids: voids,
-      complexity: Float.round(complexity, 4),
-      max_void_persistence: Float.round(stats.max_persistence, 4)
+      complexity: round_float(complexity, 4),
+      max_void_persistence: round_float(stats.max_persistence, 4)
     }
   end
 
@@ -568,12 +568,12 @@ defmodule CNS.Topology.Persistence do
          cycles.cycle_severity * 0.5 +
          higher.complexity * 0.2)
       |> min(1.0)
-      |> Float.round(4)
+      |> round_float(4)
 
     # Robustness: ratio of significant to total features
     topological_robustness =
       if total_features > 0 do
-        Float.round(significant_features / total_features, 4)
+        round_float(significant_features / total_features, 4)
       else
         0.0
       end
@@ -625,4 +625,12 @@ defmodule CNS.Topology.Persistence do
     end)
     |> Map.new()
   end
+
+  defp round_float(value, precision) when is_integer(value),
+    do: Float.round(value * 1.0, precision)
+
+  defp round_float(value, precision) when is_float(value),
+    do: Float.round(value, precision)
+
+  defp round_float(_value, _precision), do: 0.0
 end

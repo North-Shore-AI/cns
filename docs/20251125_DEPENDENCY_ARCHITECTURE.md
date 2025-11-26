@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-The CNS-Crucible integration uses a **clean separation** architecture with an intermediate **glue app** (`cns_experiments`) to bridge the two frameworks. This keeps both CNS and Crucible framework independent and reusable.
+The CNS-Crucible integration uses a **clean separation** architecture with an intermediate **glue app** (`cns_crucible`) to bridge the two frameworks. This keeps both CNS and Crucible framework independent and reusable.
 
 ---
 
@@ -29,7 +29,7 @@ graph TB
     end
 
     subgraph "Integration Layer"
-        CNSEXP[cns_experiments<br/>GLUE APP<br/>Depends on ALL]
+        CNSEXP[cns_crucible<br/>GLUE APP<br/>Depends on ALL]
     end
 
     CNS -.->|no direct dep| CF
@@ -104,7 +104,7 @@ deps: [
 
 Crucible Framework defines a **behaviour** (`Crucible.CNS.Adapter`) but doesn't depend on the CNS library.
 
-### 3. CNS Experiments (cns_experiments/mix.exs)
+### 3. CNS Experiments (cns_crucible/mix.exs)
 
 ```elixir
 deps: [
@@ -145,7 +145,7 @@ This is the **integration app** that wires CNS domain logic into Crucible's expe
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    cns_experiments                          │
+│                    cns_crucible                          │
 │  (Integration Layer - Knows about both domains)             │
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐  │
@@ -212,7 +212,7 @@ deps: [
 ### Option C: Separate Integration App ✅
 
 ```elixir
-# In cns_experiments/mix.exs
+# In cns_crucible/mix.exs
 deps: [
   {:cns, path: "../cns"},
   {:crucible_framework, path: "../crucible_framework"}
@@ -279,12 +279,12 @@ lib/crucible/
 - ❌ Concrete CNS adapter implementations
 - ❌ CNS-specific experiments
 
-### CNS Experiments (cns_experiments/)
+### CNS Experiments (cns_crucible/)
 
 **Purpose:** Wire CNS domain logic into Crucible infrastructure
 
 ```
-lib/cns_experiments/
+lib/cns_crucible/
 ├── adapters/
 │   ├── metrics.ex       # Crucible.CNS.Adapter impl
 │   ├── surrogates.ex    # Surrogate adapter
@@ -353,7 +353,7 @@ experiment = %Experiment{
 ### Pattern 3: Using CNS WITH Crucible
 
 ```elixir
-# In cns_experiments app
+# In cns_crucible app
 defp deps do
   [
     {:cns, path: "../cns"},
@@ -370,7 +370,7 @@ CnsExperiments.Experiments.ScifactClaimExtraction.run(
 
 ---
 
-## Why You Might NOT Be Using cns_experiments
+## Why You Might NOT Be Using cns_crucible
 
 Looking at the current work (Gate 1 validation script), we're using:
 
@@ -397,10 +397,10 @@ This creates a **ad-hoc integration** rather than using the proper glue app. Thi
 
 ### The Better Approach
 
-**Option A:** Move validation script to `cns_experiments/`:
+**Option A:** Move validation script to `cns_crucible/`:
 
 ```elixir
-# cns_experiments/scripts/validate_surrogates.exs
+# cns_crucible/scripts/validate_surrogates.exs
 alias CnsExperiments.Adapters.Surrogates
 alias CnsExperiments.Data.ScifactLoader
 
@@ -412,7 +412,7 @@ ScifactLoader.load()
 **Option B:** Use the existing experiment infrastructure:
 
 ```elixir
-# Run via cns_experiments
+# Run via cns_crucible
 mix run -e "CnsExperiments.Experiments.SurrogateValidation.run()"
 ```
 
@@ -429,7 +429,7 @@ mix run -e "CnsExperiments.Experiments.SurrogateValidation.run()"
 
 ### For Production Experiments
 
-**Use cns_experiments** for:
+**Use cns_crucible** for:
 1. Recurring experiments (SciFact claim extraction)
 2. Production training pipelines
 3. Research studies with full Crucible features (ensemble, hedging, bench)
@@ -447,12 +447,12 @@ mix run -e "CnsExperiments.Experiments.SurrogateValidation.run()"
 
 ## Migration Path
 
-If we want to move the validation to `cns_experiments`:
+If we want to move the validation to `cns_crucible`:
 
 ### Step 1: Create Experiment Module
 
 ```elixir
-# cns_experiments/lib/cns_experiments/experiments/surrogate_validation.ex
+# cns_crucible/lib/cns_crucible/experiments/surrogate_validation.ex
 defmodule CnsExperiments.Experiments.SurrogateValidation do
   @moduledoc """
   Gate 1 validation: Test correlation between surrogates and logical validity.
@@ -482,7 +482,7 @@ end
 ### Step 2: Run via Mix Task
 
 ```bash
-cd cns_experiments
+cd cns_crucible
 mix cns.validate_surrogates --dataset scifact
 ```
 
@@ -495,7 +495,7 @@ mix cns.validate_surrogates --dataset scifact
 ```
 cns (standalone) + crucible_framework (standalone)
                     ↓
-            cns_experiments (glue)
+            cns_crucible (glue)
                     ↓
             Production experiments
 ```
@@ -512,9 +512,9 @@ cns (standalone) + crucible_framework (standalone)
 
 - ✅ CNS is standalone
 - ✅ Crucible is standalone
-- ✅ cns_experiments exists and has proper adapters
+- ✅ cns_crucible exists and has proper adapters
 - ⚠️ Gate 1 validation script is in crucible_framework (acceptable for one-off)
-- 📋 Future experiments should use cns_experiments
+- 📋 Future experiments should use cns_crucible
 
 ---
 

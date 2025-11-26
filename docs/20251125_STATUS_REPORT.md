@@ -170,7 +170,7 @@ end
 ```
 
 **Status:** Expected - Crucible IR integration is separate phase
-**Priority:** P3 - Integration happens via cns_experiments app
+**Priority:** P3 - Integration happens via cns_crucible app
 
 ### 2. ExTopology References
 
@@ -470,7 +470,7 @@ All four reliability libraries are integrated:
 **Related Projects:**
 - crucible_framework
 - tinkex
-- cns_experiments
+- cns_crucible
 
 ---
 

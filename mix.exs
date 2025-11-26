@@ -54,6 +54,8 @@ defmodule CNS.MixProject do
       {:libgraph, "~> 0.16"},
       {:telemetry, "~> 1.2"},
       {:ex_topology, "~> 0.1.1"},
+      {:gemini_ex, "~> 0.4", optional: true},
+      {:req, "~> 0.5", optional: true},
 
       # ML/NLP dependencies for semantic validation (optional)
       {:bumblebee, "~> 0.5", optional: true},

@@ -7,7 +7,7 @@
 
 > Note: The legacy `CNS.CrucibleAdapter` and `lib/cns/crucible_contracts/*`
 > modules have been removed. Crucible integration now lives in the
-> `cns_experiments` app via `CnsExperiments.Adapters.*` behaviours.
+> `cns_crucible` app via `CnsExperiments.Adapters.*` behaviours.
 
 ---
 

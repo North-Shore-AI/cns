@@ -227,7 +227,7 @@ CNS.Supervisor
 | `TopologyValidator` | `CNS.Topology.Analyzer` | GenServer with Nx |
 | `FisherMetric` | `CNS.Fisher.Metric` | Nx-based computation |
 | Dataset loading | `Crucible.Datasets` | Via crucible_datasets |
-| Training loop | `CrucibleFramework` pipeline (backend_call) | Via cns_experiments adapters |
+| Training loop | `CrucibleFramework` pipeline (backend_call) | Via cns_crucible adapters |
 
 ### Key Differences
 
@@ -363,7 +363,7 @@ score = CNS.Critics.aggregate_score(results)
 ### Training CNS Models
 
 ```elixir
-# Build Crucible IR experiment (handled in cns_experiments)
+# Build Crucible IR experiment (handled in cns_crucible)
 experiment = %Crucible.IR.Experiment{
   id: "cns_scifact",
   dataset: %Crucible.IR.DatasetRef{name: "scifact", options: %{input_key: :prompt, output_key: :completion}},
