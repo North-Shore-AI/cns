@@ -14,8 +14,10 @@ defmodule CNS.Embedding.Gemini do
 
   @compile {:no_warn_undefined, Gemini}
   require Logger
+  alias Gemini.Types.Response.EmbedContentResponse
 
   @default_model "text-embedding-004"
+  @typep embed_result :: {:ok, map()} | {:error, Gemini.Error.t()}
 
   @spec encode(String.t()) :: {:ok, list(number())} | {:error, term()}
   def encode(text) when is_binary(text) do
@@ -38,25 +40,27 @@ defmodule CNS.Embedding.Gemini do
 
         Logger.info("[CNS.Embedding.Gemini] model=#{model} dim=#{output_dim || "default"}")
 
-        case Gemini.embed_content(text, request_opts) do
-          {:ok, %{embedding: %{values: values}}} when is_list(values) ->
-            {:ok, values}
-
-          {:ok, %{embedding: values}} when is_list(values) ->
-            {:ok, values}
-
-          {:ok, resp} ->
-            Logger.error("[CNS.Embedding.Gemini] unexpected response: #{inspect(resp)}")
-            {:error, {:unexpected_response, resp}}
+        case embed_content(text, request_opts) do
+          {:ok, %EmbedContentResponse{} = resp} ->
+            {:ok, EmbedContentResponse.get_values(resp)}
 
           {:error, reason} ->
             {:error, reason}
+
+          other ->
+            Logger.error("[CNS.Embedding.Gemini] unexpected response: #{inspect(other)}")
+            {:error, {:unexpected_response, other}}
         end
       end
     end
   end
 
   def encode(_), do: {:error, :invalid_input}
+
+  @spec embed_content(String.t(), keyword()) :: embed_result
+  defp embed_content(text, opts) do
+    apply(Gemini, :embed_content, [text, opts])
+  end
 
   defp maybe_put(keyword, _key, nil), do: keyword
   defp maybe_put(keyword, key, value), do: Keyword.put(keyword, key, value)
