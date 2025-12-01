@@ -53,7 +53,7 @@ defmodule CNS.MixProject do
       {:uuid, "~> 1.1"},
       {:libgraph, "~> 0.16"},
       {:telemetry, "~> 1.2"},
-      {:ex_topology, "~> 0.1.1"},
+      {:ex_topology, path: "../ex_topology"},
       {:gemini_ex, "~> 0.4", optional: true},
       {:req, "~> 0.5", optional: true},
 

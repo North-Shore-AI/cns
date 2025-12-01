@@ -12,9 +12,8 @@ defmodule CNS.Embedding.Gemini do
   Requires `GEMINI_API_KEY` in the environment and the `gemini_ex` dependency.
   """
 
-  @compile {:no_warn_undefined, Gemini}
+  @compile {:no_warn_undefined, [Gemini, Gemini.Types.Response.EmbedContentResponse, Gemini.Error]}
   require Logger
-  alias Gemini.Types.Response.EmbedContentResponse
 
   @default_model "text-embedding-004"
   @typep embed_result :: {:ok, map()} | {:error, Gemini.Error.t()}
@@ -41,8 +40,8 @@ defmodule CNS.Embedding.Gemini do
         Logger.info("[CNS.Embedding.Gemini] model=#{model} dim=#{output_dim || "default"}")
 
         case embed_content(text, request_opts) do
-          {:ok, %EmbedContentResponse{} = resp} ->
-            {:ok, EmbedContentResponse.get_values(resp)}
+          {:ok, resp} when is_struct(resp) ->
+            {:ok, Gemini.Types.Response.EmbedContentResponse.get_values(resp)}
 
           {:error, reason} ->
             {:error, reason}

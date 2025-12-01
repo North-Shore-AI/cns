@@ -170,18 +170,23 @@ defmodule CNS.Validation.ModelLoader do
     if bumblebee_available?() do
       try do
         {:ok, model_info} =
-          Bumblebee.load_model({:hf, @nli_model_repo},
-            architecture: :for_sequence_classification
-          )
+          apply(Bumblebee, :load_model, [
+            {:hf, @nli_model_repo},
+            [architecture: :for_sequence_classification]
+          ])
 
-        {:ok, tokenizer} = Bumblebee.load_tokenizer({:hf, @nli_model_repo})
+        {:ok, tokenizer} = apply(Bumblebee, :load_tokenizer, [{:hf, @nli_model_repo}])
 
         # Use standard NLI text classification; model outputs entailment/neutral/contradiction
         serving =
-          Bumblebee.Text.text_classification(model_info, tokenizer,
-            compile: [batch_size: 1, sequence_length: 512],
-            defn_options: [compiler: EXLA]
-          )
+          apply(Bumblebee.Text, :text_classification, [
+            model_info,
+            tokenizer,
+            [
+              compile: [batch_size: 1, sequence_length: 512],
+              defn_options: [compiler: EXLA]
+            ]
+          ])
 
         {:ok, serving}
       rescue
@@ -196,17 +201,21 @@ defmodule CNS.Validation.ModelLoader do
   defp load_embedding_model do
     if bumblebee_available?() do
       try do
-        {:ok, model_info} = Bumblebee.load_model({:hf, @embedding_model_repo})
-        {:ok, tokenizer} = Bumblebee.load_tokenizer({:hf, @embedding_model_repo})
+        {:ok, model_info} = apply(Bumblebee, :load_model, [{:hf, @embedding_model_repo}])
+        {:ok, tokenizer} = apply(Bumblebee, :load_tokenizer, [{:hf, @embedding_model_repo}])
 
         # Create serving for text embedding
         serving =
-          Bumblebee.Text.text_embedding(model_info, tokenizer,
-            compile: [batch_size: 2, sequence_length: 256],
-            defn_options: [compiler: EXLA],
-            output_pool: :mean_pooling,
-            output_attribute: :hidden_state
-          )
+          apply(Bumblebee.Text, :text_embedding, [
+            model_info,
+            tokenizer,
+            [
+              compile: [batch_size: 2, sequence_length: 256],
+              defn_options: [compiler: EXLA],
+              output_pool: :mean_pooling,
+              output_attribute: :hidden_state
+            ]
+          ])
 
         {:ok, serving}
       rescue
