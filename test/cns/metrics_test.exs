@@ -2,7 +2,7 @@ defmodule CNS.MetricsTest do
   use ExUnit.Case, async: true
   use ExUnitProperties
 
-  alias CNS.{Metrics, SNO, Evidence, Challenge}
+  alias CNS.{Challenge, Evidence, Metrics, SNO}
 
   describe "quality_score/1" do
     test "calculates overall quality" do

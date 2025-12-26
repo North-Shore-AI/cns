@@ -1,7 +1,7 @@
 defmodule CNS.Training.EvaluationTest do
   use ExUnit.Case, async: true
   alias CNS.Training.Evaluation
-  alias CNS.Training.Evaluation.{Metrics, EvalConfig, EvalResult}
+  alias CNS.Training.Evaluation.{EvalConfig, EvalResult, Metrics}
 
   describe "Metrics struct" do
     test "can be constructed with all fields" do

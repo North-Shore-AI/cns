@@ -1,8 +1,7 @@
 defmodule CNS.Metrics.ConvergenceTest do
   use ExUnit.Case, async: true
 
-  alias CNS.Metrics
-  alias CNS.{SNO, Evidence}
+  alias CNS.{Evidence, Metrics, SNO}
 
   describe "convergence_score/2" do
     test "returns 1.0 for identical SNOs" do

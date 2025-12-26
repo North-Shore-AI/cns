@@ -1,6 +1,6 @@
 defmodule CNS.Pipeline.SchemaTest do
   use ExUnit.Case, async: true
-  alias CNS.Pipeline.Schema.{TrainingExample, ClaimEntry, Lineage}
+  alias CNS.Pipeline.Schema.{ClaimEntry, Lineage, TrainingExample}
 
   describe "TrainingExample struct" do
     test "can be constructed with required fields" do

@@ -8,7 +8,7 @@ defmodule CNS.Training do
   """
 
   require Logger
-  alias CNS.{SNO, Evidence}
+  alias CNS.{Evidence, SNO}
 
   @type dataset :: %{
           train: [map()],
@@ -331,8 +331,6 @@ defmodule CNS.Training do
   defp format_evidence([]), do: "None"
 
   defp format_evidence(evidence) do
-    evidence
-    |> Enum.map(fn e -> "- #{e.source} (validity: #{e.validity})" end)
-    |> Enum.join("\n")
+    Enum.map_join(evidence, "\n", fn e -> "- #{e.source} (validity: #{e.validity})" end)
   end
 end

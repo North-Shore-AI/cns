@@ -14,7 +14,7 @@ defmodule CNS.Agents.Synthesizer do
       true
   """
 
-  alias CNS.{SNO, Evidence, Provenance, Challenge, Config}
+  alias CNS.{Challenge, Config, Evidence, Provenance, SNO}
 
   @doc """
   Synthesize thesis and antithesis into a coherent synthesis.
@@ -317,8 +317,7 @@ defmodule CNS.Agents.Synthesizer do
     |> String.downcase()
     |> String.replace(~r/[^\w\s]/, "")
     |> String.split(~r/\s+/, trim: true)
-    |> Enum.reject(&(&1 in stop_words))
-    |> Enum.reject(&(String.length(&1) < 3))
+    |> Enum.reject(&(&1 in stop_words or String.length(&1) < 3))
   end
 
   defp word_overlap(words1, words2) do

@@ -13,26 +13,15 @@ defmodule CNS.Embedding.Encoder do
 
   @spec encode(String.t()) :: {:ok, list(number())} | {:error, term()}
   def encode(text) when is_binary(text) do
-    case provider() do
-      nil ->
-        {:error, :no_embedding_provider}
-
-      module when is_atom(module) ->
-        case Code.ensure_loaded(module) do
-          {:module, _} ->
-            if function_exported?(module, :encode, 1) do
-              Logger.info(
-                "[CNS.Embedding.Encoder] provider=#{inspect(module)} len=#{String.length(text)}"
-              )
-
-              module.encode(text)
-            else
-              {:error, {:invalid_provider, module}}
-            end
-
-          _ ->
-            {:error, {:invalid_provider, module}}
-        end
+    with module when not is_nil(module) <- provider(),
+         {:module, _} <- Code.ensure_loaded(module),
+         true <- function_exported?(module, :encode, 1) do
+      Logger.info("[CNS.Embedding.Encoder] provider=#{inspect(module)} len=#{String.length(text)}")
+      module.encode(text)
+    else
+      nil -> {:error, :no_embedding_provider}
+      {:error, _} -> {:error, {:invalid_provider, provider()}}
+      false -> {:error, {:invalid_provider, provider()}}
     end
   end
 

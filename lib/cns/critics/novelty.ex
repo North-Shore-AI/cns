@@ -20,7 +20,7 @@ defmodule CNS.Critics.Novelty do
 
   @behaviour CNS.Critics.Critic
 
-  alias CNS.{SNO, Evidence}
+  alias CNS.{Evidence, SNO}
 
   # Client API
 

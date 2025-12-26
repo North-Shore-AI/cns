@@ -20,7 +20,7 @@ defmodule CNS.Critics.Grounding do
 
   @behaviour CNS.Critics.Critic
 
-  alias CNS.{SNO, Evidence}
+  alias CNS.{Evidence, SNO}
 
   # Client API
 

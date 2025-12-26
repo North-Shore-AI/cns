@@ -1,7 +1,7 @@
 defmodule CNS.TrainingTest do
   use ExUnit.Case, async: true
 
-  alias CNS.{Training, SNO, Evidence}
+  alias CNS.{Evidence, SNO, Training}
 
   describe "prepare_dataset/2" do
     test "prepares dataset with default split" do

@@ -90,24 +90,25 @@ defmodule CNS.Graph.Traversal do
   """
   @spec vertex_depth(Graph.t(), any()) :: non_neg_integer()
   def vertex_depth(graph, vertex) do
-    # Find roots (vertices with no incoming edges)
-    roots =
-      graph
-      |> Graph.vertices()
-      |> Enum.filter(fn v -> Graph.in_degree(graph, v) == 0 end)
+    roots = find_roots(graph)
+    if Enum.empty?(roots) or vertex in roots, do: 0, else: find_max_depth(graph, roots, vertex)
+  end
 
-    if Enum.empty?(roots) or vertex in roots do
-      0
-    else
-      # Find shortest path from any root to this vertex
-      roots
-      |> Enum.map(fn root ->
-        case shortest_path(graph, root, vertex) do
-          nil -> 0
-          path -> length(path) - 1
-        end
-      end)
-      |> Enum.max(fn -> 0 end)
+  defp find_roots(graph) do
+    Graph.vertices(graph)
+    |> Enum.filter(fn v -> Graph.in_degree(graph, v) == 0 end)
+  end
+
+  defp find_max_depth(graph, roots, vertex) do
+    roots
+    |> Enum.map(&path_depth_to_vertex(graph, &1, vertex))
+    |> Enum.max(fn -> 0 end)
+  end
+
+  defp path_depth_to_vertex(graph, root, vertex) do
+    case shortest_path(graph, root, vertex) do
+      nil -> 0
+      path -> length(path) - 1
     end
   end
 

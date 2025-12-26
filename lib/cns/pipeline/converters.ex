@@ -89,17 +89,19 @@ defmodule CNS.Pipeline.Converters do
     entry
     |> Map.get("evidence", %{})
     |> Enum.flat_map(fn {doc_id, evidence_sets} ->
-      Enum.flat_map(evidence_sets, fn evidence_set ->
-        label = Map.get(evidence_set, "label", "supports")
-        sent_ids = Map.get(evidence_set, "sentences", [])
-
-        Enum.map(sent_ids, fn sent_idx ->
-          text = get_sentence(corpus, doc_id, sent_idx)
-          {text, normalize_label(label), "[#{doc_id}:#{sent_idx}]"}
-        end)
-      end)
+      Enum.flat_map(evidence_sets, &extract_evidence_from_set(&1, corpus, doc_id))
     end)
     |> Enum.reject(fn {text, _, _} -> text == "" end)
+  end
+
+  defp extract_evidence_from_set(evidence_set, corpus, doc_id) do
+    label = Map.get(evidence_set, "label", "supports")
+    sent_ids = Map.get(evidence_set, "sentences", [])
+
+    Enum.map(sent_ids, fn sent_idx ->
+      text = get_sentence(corpus, doc_id, sent_idx)
+      {text, normalize_label(label), "[#{doc_id}:#{sent_idx}]"}
+    end)
   end
 
   @doc """
@@ -115,18 +117,18 @@ defmodule CNS.Pipeline.Converters do
   defp build_passage(entry, corpus) do
     entry
     |> Map.get("evidence", %{})
-    |> Enum.flat_map(fn {doc_id, _} ->
-      case Map.get(corpus, doc_id) do
-        nil ->
-          []
-
-        %{sentences: sents} ->
-          sents
-          |> Enum.with_index()
-          |> Enum.map(fn {sent, idx} -> "[#{doc_id}:#{idx}] #{sent}" end)
-      end
-    end)
+    |> Enum.flat_map(fn {doc_id, _} -> format_doc_sentences(corpus, doc_id) end)
     |> Enum.join("\n")
+  end
+
+  defp format_doc_sentences(corpus, doc_id) do
+    case Map.get(corpus, doc_id) do
+      nil ->
+        []
+
+      %{sentences: sents} ->
+        Enum.with_index(sents, fn sent, idx -> "[#{doc_id}:#{idx}] #{sent}" end)
+    end
   end
 
   defp get_sentence(corpus, doc_id, sent_idx) do

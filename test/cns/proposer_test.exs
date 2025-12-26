@@ -1,8 +1,8 @@
 defmodule CNS.ProposerTest do
   use ExUnit.Case, async: true
 
-  alias CNS.{SNO, Config}
   alias CNS.Agents.Proposer
+  alias CNS.{Config, SNO}
 
   describe "extract_claims/2" do
     test "extracts claims from text" do

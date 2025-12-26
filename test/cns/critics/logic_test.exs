@@ -2,7 +2,7 @@ defmodule CNS.Critics.LogicTest do
   use ExUnit.Case, async: true
 
   alias CNS.Critics.Logic
-  alias CNS.{SNO, Evidence}
+  alias CNS.{Evidence, SNO}
 
   describe "start_link/1" do
     test "starts the logic critic" do

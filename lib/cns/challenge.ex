@@ -138,33 +138,36 @@ defmodule CNS.Challenge do
   """
   @spec from_map(map()) :: {:ok, t()} | {:error, term()}
   def from_map(map) when is_map(map) do
-    try do
-      counter_evidence =
-        (Map.get(map, "counter_evidence") || Map.get(map, :counter_evidence) || [])
-        |> Enum.map(fn e ->
-          case Evidence.from_map(e) do
-            {:ok, ev} -> ev
-            _ -> nil
-          end
-        end)
-        |> Enum.reject(&is_nil/1)
+    challenge = %__MODULE__{
+      id: get_field(map, :id) || UUID.uuid4(),
+      target_id: get_field(map, :target_id),
+      challenge_type: parse_atom(get_field(map, :challenge_type)),
+      description: get_field(map, :description),
+      counter_evidence: parse_counter_evidence(get_field(map, :counter_evidence)),
+      severity: parse_atom(get_field(map, :severity) || :medium),
+      confidence: parse_float(get_field(map, :confidence) || 0.5),
+      resolution: parse_atom(get_field(map, :resolution) || :pending),
+      metadata: get_field(map, :metadata) || %{}
+    }
 
-      challenge = %__MODULE__{
-        id: Map.get(map, "id") || Map.get(map, :id) || UUID.uuid4(),
-        target_id: Map.get(map, "target_id") || Map.get(map, :target_id),
-        challenge_type: parse_atom(Map.get(map, "challenge_type") || Map.get(map, :challenge_type)),
-        description: Map.get(map, "description") || Map.get(map, :description),
-        counter_evidence: counter_evidence,
-        severity: parse_atom(Map.get(map, "severity") || Map.get(map, :severity) || :medium),
-        confidence: parse_float(Map.get(map, "confidence") || Map.get(map, :confidence) || 0.5),
-        resolution: parse_atom(Map.get(map, "resolution") || Map.get(map, :resolution) || :pending),
-        metadata: Map.get(map, "metadata") || Map.get(map, :metadata) || %{}
-      }
+    {:ok, challenge}
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
 
-      {:ok, challenge}
-    rescue
-      e -> {:error, Exception.message(e)}
-    end
+  defp get_field(map, key), do: Map.get(map, to_string(key)) || Map.get(map, key)
+
+  defp parse_counter_evidence(nil), do: []
+
+  defp parse_counter_evidence(list) when is_list(list) do
+    list
+    |> Enum.map(fn e ->
+      case Evidence.from_map(e) do
+        {:ok, ev} -> ev
+        _ -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
   end
 
   @doc """

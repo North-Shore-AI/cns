@@ -119,31 +119,29 @@ defmodule CNS.Topology.Surrogates do
     tensor = Adapter.to_tensor(embeddings, type: :f32)
     {n_samples, _dim} = Nx.shape(tensor)
 
-    cond do
-      n_samples <= 1 ->
-        0.0
+    if n_samples <= 1 do
+      0.0
+    else
+      neighbors = min(k, max(n_samples - 1, 1))
 
-      true ->
-        neighbors = min(k, max(n_samples - 1, 1))
+      knn_dists =
+        Embedding.knn_distances(tensor,
+          k: neighbors,
+          metric: metric
+        )
 
-        knn_dists =
-          Embedding.knn_distances(tensor,
-            k: neighbors,
-            metric: metric
-          )
+      variance =
+        knn_dists
+        |> Nx.variance(axes: [1])
+        |> Nx.mean()
+        |> Nx.to_number()
 
-        variance =
-          knn_dists
-          |> Nx.variance(axes: [1])
-          |> Nx.mean()
-          |> Nx.to_number()
+      mean_distance =
+        knn_dists
+        |> Nx.mean()
+        |> Nx.to_number()
 
-        mean_distance =
-          knn_dists
-          |> Nx.mean()
-          |> Nx.to_number()
-
-        normalize_variance(variance + mean_distance)
+      normalize_variance(variance + mean_distance)
     end
   end
 
@@ -270,45 +268,9 @@ defmodule CNS.Topology.Surrogates do
   defp compute_correlation(x_values, y_values, :pearson) do
     n = length(x_values)
 
-    if n < 2 do
-      %{correlation: 0.0, p_value: 1.0}
-    else
-      x_tensor = Nx.tensor(x_values, type: :f32)
-      y_tensor = Nx.tensor(y_values, type: :f32)
-
-      x_mean = Nx.mean(x_tensor)
-      y_mean = Nx.mean(y_tensor)
-
-      x_centered = Nx.subtract(x_tensor, x_mean)
-      y_centered = Nx.subtract(y_tensor, y_mean)
-
-      numerator = Nx.sum(Nx.multiply(x_centered, y_centered))
-
-      x_std = Nx.sqrt(Nx.sum(Nx.multiply(x_centered, x_centered)))
-      y_std = Nx.sqrt(Nx.sum(Nx.multiply(y_centered, y_centered)))
-
-      denom_value = Nx.multiply(x_std, y_std) |> Nx.to_number()
-
-      correlation =
-        cond do
-          denom_value == 0.0 -> 0.0
-          true -> Nx.divide(numerator, denom_value) |> Nx.to_number()
-        end
-        |> then(&max(min(&1, 1.0), -1.0))
-
-      p_value =
-        if n < 3 or abs(correlation) >= 0.9999 do
-          0.0
-        else
-          t_stat = correlation * :math.sqrt((n - 2) / max(1.0e-6, 1 - correlation * correlation))
-          if abs(t_stat) < 2.0, do: 0.1, else: 0.01
-        end
-
-      %{
-        correlation: Float.round(correlation, 4),
-        p_value: Float.round(p_value, 4)
-      }
-    end
+    if n < 2,
+      do: %{correlation: 0.0, p_value: 1.0},
+      else: pearson_correlation(x_values, y_values, n)
   end
 
   defp compute_correlation(x_values, y_values, :spearman) do
@@ -317,6 +279,43 @@ defmodule CNS.Topology.Surrogates do
     y_ranks = compute_ranks(y_values)
 
     compute_correlation(x_ranks, y_ranks, :pearson)
+  end
+
+  defp pearson_correlation(x_values, y_values, n) do
+    x_tensor = Nx.tensor(x_values, type: :f32)
+    y_tensor = Nx.tensor(y_values, type: :f32)
+
+    x_mean = Nx.mean(x_tensor)
+    y_mean = Nx.mean(y_tensor)
+
+    x_centered = Nx.subtract(x_tensor, x_mean)
+    y_centered = Nx.subtract(y_tensor, y_mean)
+
+    numerator = Nx.sum(Nx.multiply(x_centered, y_centered))
+
+    x_std = Nx.sqrt(Nx.sum(Nx.multiply(x_centered, x_centered)))
+    y_std = Nx.sqrt(Nx.sum(Nx.multiply(y_centered, y_centered)))
+
+    denom_value = Nx.multiply(x_std, y_std) |> Nx.to_number()
+    correlation = compute_correlation_value(numerator, denom_value)
+    p_value = compute_p_value(n, correlation)
+
+    %{correlation: Float.round(correlation, 4), p_value: Float.round(p_value, 4)}
+  end
+
+  defp compute_correlation_value(_numerator, denom) when denom == 0.0, do: 0.0
+
+  defp compute_correlation_value(numerator, denom_value) do
+    Nx.divide(numerator, denom_value)
+    |> Nx.to_number()
+    |> then(&max(min(&1, 1.0), -1.0))
+  end
+
+  defp compute_p_value(n, correlation) when n < 3 or abs(correlation) >= 0.9999, do: 0.0
+
+  defp compute_p_value(n, correlation) do
+    t_stat = correlation * :math.sqrt((n - 2) / max(1.0e-6, 1 - correlation * correlation))
+    if abs(t_stat) < 2.0, do: 0.1, else: 0.01
   end
 
   defp compute_ranks(values) do

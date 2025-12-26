@@ -145,23 +145,22 @@ defmodule CNS.Evidence do
   """
   @spec from_map(map()) :: {:ok, t()} | {:error, term()}
   def from_map(map) when is_map(map) do
-    try do
-      evidence = %__MODULE__{
-        id: Map.get(map, "id") || Map.get(map, :id) || generate_id(),
-        source: Map.get(map, "source") || Map.get(map, :source),
-        content: Map.get(map, "content") || Map.get(map, :content) || "",
-        validity: parse_float(Map.get(map, "validity") || Map.get(map, :validity) || 1.0),
-        relevance: parse_float(Map.get(map, "relevance") || Map.get(map, :relevance) || 1.0),
-        retrieval_method:
-          parse_atom(Map.get(map, "retrieval_method") || Map.get(map, :retrieval_method) || :manual),
-        timestamp: parse_timestamp(Map.get(map, "timestamp") || Map.get(map, :timestamp))
-      }
+    evidence = %__MODULE__{
+      id: get_field(map, :id) || generate_id(),
+      source: get_field(map, :source),
+      content: get_field(map, :content) || "",
+      validity: parse_float(get_field(map, :validity) || 1.0),
+      relevance: parse_float(get_field(map, :relevance) || 1.0),
+      retrieval_method: parse_atom(get_field(map, :retrieval_method) || :manual),
+      timestamp: parse_timestamp(get_field(map, :timestamp))
+    }
 
-      {:ok, evidence}
-    rescue
-      e -> {:error, Exception.message(e)}
-    end
+    {:ok, evidence}
+  rescue
+    e -> {:error, Exception.message(e)}
   end
+
+  defp get_field(map, key), do: Map.get(map, to_string(key)) || Map.get(map, key)
 
   @doc """
   Calculate a combined score from validity and relevance.

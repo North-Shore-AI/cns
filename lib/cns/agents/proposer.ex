@@ -16,7 +16,7 @@ defmodule CNS.Agents.Proposer do
       true
   """
 
-  alias CNS.{SNO, Evidence, Provenance, Config}
+  alias CNS.{Config, Evidence, Provenance, SNO}
 
   @doc """
   Extract claims from input text.
@@ -185,30 +185,28 @@ defmodule CNS.Agents.Proposer do
     |> Enum.reject(&(String.length(&1) < 10))
   end
 
-  defp analyze_sentence(sentence, extract_evidence?) do
-    # Skip questions and fragments
-    if String.ends_with?(sentence, "?") or String.length(sentence) < 15 do
-      nil
-    else
-      confidence = score_confidence(sentence)
+  defp analyze_sentence(sentence, _extract_evidence?) when byte_size(sentence) < 15, do: nil
 
-      evidence =
-        if extract_evidence? do
-          case extract_evidence(sentence) do
-            {:ok, ev} -> ev
-            _ -> []
-          end
-        else
-          []
-        end
+  defp analyze_sentence(sentence, _extract_evidence?) do
+    if String.ends_with?(sentence, "?"), do: nil, else: build_sentence_sno(sentence)
+  end
 
-      provenance = Provenance.new(:proposer, transformation: "claim_extraction")
+  defp build_sentence_sno(sentence) do
+    confidence = score_confidence(sentence)
+    evidence = extract_sentence_evidence(sentence)
+    provenance = Provenance.new(:proposer, transformation: "claim_extraction")
 
-      SNO.new(sentence,
-        confidence: confidence,
-        evidence: evidence,
-        provenance: provenance
-      )
+    SNO.new(sentence,
+      confidence: confidence,
+      evidence: evidence,
+      provenance: provenance
+    )
+  end
+
+  defp extract_sentence_evidence(sentence) do
+    case extract_evidence(sentence) do
+      {:ok, ev} -> ev
+      _ -> []
     end
   end
 

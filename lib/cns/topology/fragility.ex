@@ -44,10 +44,9 @@ defmodule CNS.Topology.Fragility do
       # => 0.82 (high impact - removing this claim destabilizes network)
   """
 
-  # TODO: ExTopology library not yet available
-  # alias ExTopology.Fragility
-  alias CNS.Topology.Adapter
+  # ExTopology integration for topological fragility analysis
   alias CNS.SNO
+  alias CNS.Topology.Adapter
 
   require Logger
 

@@ -141,27 +141,26 @@ defmodule CNS.Critics.Bias do
   defp check_framing_balance(claim) do
     claim_lower = String.downcase(claim)
 
-    # Check for one-sided framing
     positive_markers =
       length(Regex.scan(~r/\b(benefit|advantage|positive|good|better|improve)\b/, claim_lower))
 
     negative_markers =
       length(Regex.scan(~r/\b(harm|disadvantage|negative|bad|worse|decline)\b/, claim_lower))
 
-    total = positive_markers + negative_markers
+    analyze_framing_ratio(positive_markers, negative_markers)
+  end
 
-    if total == 0 do
-      # Neutral, but might lack nuance
-      {0.8, []}
+  defp analyze_framing_ratio(positive, negative) when positive + negative == 0, do: {0.8, []}
+
+  defp analyze_framing_ratio(positive, negative) do
+    total = positive + negative
+    ratio = abs(positive - negative) / total
+
+    if ratio > 0.7 do
+      direction = if positive > negative, do: "positive", else: "negative"
+      {1.0 - ratio, ["one_sided: heavily #{direction} framing"]}
     else
-      ratio = abs(positive_markers - negative_markers) / total
-
-      if ratio > 0.7 do
-        direction = if positive_markers > negative_markers, do: "positive", else: "negative"
-        {1.0 - ratio, ["one_sided: heavily #{direction} framing"]}
-      else
-        {1.0, []}
-      end
+      {1.0, []}
     end
   end
 

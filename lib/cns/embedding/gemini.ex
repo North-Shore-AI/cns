@@ -13,6 +13,7 @@ defmodule CNS.Embedding.Gemini do
   """
 
   @compile {:no_warn_undefined, [Gemini, Gemini.Types.Response.EmbedContentResponse, Gemini.Error]}
+  alias Gemini.Types.Response.EmbedContentResponse
   require Logger
 
   @default_model "text-embedding-004"
@@ -20,45 +21,46 @@ defmodule CNS.Embedding.Gemini do
 
   @spec encode(String.t()) :: {:ok, list(number())} | {:error, term()}
   def encode(text) when is_binary(text) do
-    unless Code.ensure_loaded?(Gemini) do
-      {:error, :gemini_ex_not_loaded}
+    with true <- Code.ensure_loaded?(Gemini),
+         api_key when not is_nil(api_key) and api_key != "" <- System.get_env("GEMINI_API_KEY") do
+      perform_encoding(text, api_key)
     else
-      api_key = System.get_env("GEMINI_API_KEY")
-
-      if is_nil(api_key) or api_key == "" do
-        {:error, :missing_gemini_api_key}
-      else
-        opts = Application.get_env(:cns, __MODULE__, [])
-        model = Keyword.get(opts, :model, @default_model)
-        output_dim = Keyword.get(opts, :output_dimensionality)
-
-        request_opts =
-          []
-          |> maybe_put(:model, model)
-          |> maybe_put(:output_dimensionality, output_dim)
-
-        Logger.info("[CNS.Embedding.Gemini] model=#{model} dim=#{output_dim || "default"}")
-
-        case embed_content(text, request_opts) do
-          {:ok, resp} when is_struct(resp) ->
-            {:ok, Gemini.Types.Response.EmbedContentResponse.get_values(resp)}
-
-          {:error, reason} ->
-            {:error, reason}
-
-          other ->
-            Logger.error("[CNS.Embedding.Gemini] unexpected response: #{inspect(other)}")
-            {:error, {:unexpected_response, other}}
-        end
-      end
+      false -> {:error, :gemini_ex_not_loaded}
+      nil -> {:error, :missing_gemini_api_key}
+      "" -> {:error, :missing_gemini_api_key}
     end
   end
 
   def encode(_), do: {:error, :invalid_input}
 
+  defp perform_encoding(text, _api_key) do
+    opts = Application.get_env(:cns, __MODULE__, [])
+    model = Keyword.get(opts, :model, @default_model)
+    output_dim = Keyword.get(opts, :output_dimensionality)
+
+    request_opts =
+      []
+      |> maybe_put(:model, model)
+      |> maybe_put(:output_dimensionality, output_dim)
+
+    Logger.info("[CNS.Embedding.Gemini] model=#{model} dim=#{output_dim || "default"}")
+    handle_embed_response(embed_content(text, request_opts))
+  end
+
+  defp handle_embed_response({:ok, resp}) when is_struct(resp) do
+    {:ok, EmbedContentResponse.get_values(resp)}
+  end
+
+  defp handle_embed_response({:error, reason}), do: {:error, reason}
+
+  defp handle_embed_response(other) do
+    Logger.error("[CNS.Embedding.Gemini] unexpected response: #{inspect(other)}")
+    {:error, {:unexpected_response, other}}
+  end
+
   @spec embed_content(String.t(), keyword()) :: embed_result
   defp embed_content(text, opts) do
-    apply(Gemini, :embed_content, [text, opts])
+    Gemini.embed_content(text, opts)
   end
 
   defp maybe_put(keyword, _key, nil), do: keyword

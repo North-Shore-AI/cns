@@ -1,7 +1,7 @@
 defmodule CNS.TopologyTest do
   use ExUnit.Case, async: true
 
-  alias CNS.{Topology, SNO, Provenance}
+  alias CNS.{Provenance, SNO, Topology}
   alias Graph
 
   describe "build_graph/1" do
@@ -93,19 +93,19 @@ defmodule CNS.TopologyTest do
     end
   end
 
-  describe "is_dag?/1" do
+  describe "dag?/1" do
     test "returns true for DAG" do
       graph = %{"a" => ["b"], "b" => ["c"], "c" => []}
-      assert Topology.is_dag?(graph)
+      assert Topology.dag?(graph)
     end
 
     test "returns false for cyclic graph" do
       graph = %{"a" => ["b"], "b" => ["a"]}
-      refute Topology.is_dag?(graph)
+      refute Topology.dag?(graph)
     end
 
     test "returns true for empty graph" do
-      assert Topology.is_dag?(%{})
+      assert Topology.dag?(%{})
     end
   end
 

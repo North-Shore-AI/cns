@@ -1,8 +1,8 @@
 defmodule CNS.PipelineTest do
   use ExUnit.Case, async: true
 
-  alias CNS.{SNO, Config}
   alias CNS.Agents.Pipeline
+  alias CNS.{Config, SNO}
 
   describe "run/2" do
     test "runs full pipeline" do

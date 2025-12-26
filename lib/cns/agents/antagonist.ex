@@ -13,7 +13,7 @@ defmodule CNS.Agents.Antagonist do
       true
   """
 
-  alias CNS.{SNO, Challenge, Config}
+  alias CNS.{Challenge, Config, SNO}
 
   @doc """
   Generate challenges for a given claim.

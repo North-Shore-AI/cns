@@ -57,7 +57,7 @@ defmodule CNS.Training.Evaluation do
   """
   @spec compute_metrics([String.t()], [String.t()]) :: Metrics.t()
   def compute_metrics(predictions, gold) do
-    if length(predictions) == 0 or length(gold) == 0 do
+    if Enum.empty?(predictions) or Enum.empty?(gold) do
       %Metrics{precision: 0.0, recall: 0.0, f1: 0.0, accuracy: 0.0}
     else
       correct =

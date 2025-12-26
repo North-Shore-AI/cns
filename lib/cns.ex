@@ -36,8 +36,8 @@ defmodule CNS do
       {:ok, result} = CNS.Pipeline.run("Research question?", config)
   """
 
-  alias CNS.{SNO, Config}
-  alias CNS.Agents.{Proposer, Synthesizer, Pipeline}
+  alias CNS.Agents.{Pipeline, Proposer, Synthesizer}
+  alias CNS.{Config, SNO}
 
   @doc """
   Synthesize two conflicting claims into a coherent synthesis.
@@ -104,18 +104,97 @@ defmodule CNS do
   Validate claim against evidence corpus.
 
   Uses semantic validation (NLI) and citation checking.
+  Validates citations, computes entailment and similarity scores.
+
+  ## Parameters
+
+    - `sno` - The SNO to validate
+    - `corpus` - List of corpus documents as maps with :id and :text/:abstract keys
+    - `opts` - Options including:
+      - `:gold_ids` - Set of expected evidence document IDs (default: empty)
+      - `:gold_claim` - Expected claim text for similarity (default: sno.claim)
+      - `:entailment_threshold` - Minimum entailment score (default: 0.75)
+      - `:similarity_threshold` - Minimum similarity score (default: 0.7)
 
   ## Examples
 
-      corpus = [%{id: "doc1", text: "..."}]
+      corpus = [%{id: "doc1", text: "Evidence text"}]
       {:ok, validation} = CNS.validate(claim, corpus)
+
+  ## Returns
+
+      {:ok, %{
+        valid: boolean(),
+        citation_valid: boolean(),
+        entailment_score: float(),
+        similarity_score: float(),
+        sno: SNO.t()
+      }}
   """
   @spec validate(SNO.t(), corpus :: [map()], opts :: keyword()) ::
           {:ok, map()} | {:error, term()}
-  def validate(sno, _corpus, _opts \\ []) do
-    # TODO: Implement proper validation wrapper
-    # For now, just return a success tuple
-    {:ok, %{valid: true, sno: sno}}
+  def validate(%SNO{} = sno, corpus, opts \\ []) when is_list(corpus) do
+    alias CNS.Validation.Semantic
+    alias CNS.Validation.Semantic.Config, as: SemanticConfig
+
+    # Build corpus map from list
+    corpus_map = build_corpus_map(corpus)
+
+    # Get gold IDs from options or extract from SNO evidence
+    gold_ids =
+      opts
+      |> Keyword.get(:gold_ids, extract_evidence_ids(sno))
+      |> MapSet.new()
+
+    # Get gold claim for comparison
+    gold_claim = Keyword.get(opts, :gold_claim, sno.claim)
+
+    # Build semantic config
+    config = %SemanticConfig{
+      entailment_threshold: Keyword.get(opts, :entailment_threshold, 0.75),
+      similarity_threshold: Keyword.get(opts, :similarity_threshold, 0.7)
+    }
+
+    # Run semantic validation pipeline
+    result =
+      Semantic.validate_claim(
+        config,
+        sno.claim,
+        gold_claim,
+        sno.claim,
+        corpus_map,
+        gold_ids
+      )
+
+    {:ok,
+     %{
+       valid: result.overall_pass,
+       citation_valid: result.citation_valid,
+       entailment_score: result.entailment_score,
+       similarity_score: result.semantic_similarity,
+       entailment_pass: result.entailment_pass,
+       similarity_pass: result.similarity_pass,
+       cited_ids: result.cited_ids,
+       missing_ids: result.missing_ids,
+       sno: sno
+     }}
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
+  # Build corpus map from list of documents
+  defp build_corpus_map(corpus) when is_list(corpus) do
+    Enum.reduce(corpus, %{}, fn doc, acc ->
+      id = Map.get(doc, :id) || Map.get(doc, "id")
+      if id, do: Map.put(acc, to_string(id), doc), else: acc
+    end)
+  end
+
+  # Extract evidence IDs from SNO
+  defp extract_evidence_ids(%SNO{evidence: evidence}) do
+    evidence
+    |> Enum.map(fn e -> e.id end)
+    |> Enum.reject(&is_nil/1)
   end
 
   @doc """

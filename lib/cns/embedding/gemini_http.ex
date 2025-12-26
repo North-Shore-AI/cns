@@ -25,10 +25,10 @@ defmodule CNS.Embedding.GeminiHTTP do
 
   @spec encode(String.t()) :: {:ok, list(number())} | {:error, term()}
   def encode(text) when is_binary(text) do
-    unless req_available?() do
-      {:error, :req_not_available}
-    else
+    if req_available?() do
       do_encode(text)
+    else
+      {:error, :req_not_available}
     end
   end
 
@@ -58,7 +58,7 @@ defmodule CNS.Embedding.GeminiHTTP do
 
       Logger.info("[CNS.Embedding.GeminiHTTP] model=#{model} dim=#{output_dim || "default"}")
 
-      case apply(Req, :post, [[url: url, json: body]]) do
+      case Req.post(url: url, json: body) do
         {:ok, %{status: 200, body: %{"embedding" => %{"values" => values}}}} when is_list(values) ->
           {:ok, values}
 

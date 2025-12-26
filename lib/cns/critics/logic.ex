@@ -21,7 +21,7 @@ defmodule CNS.Critics.Logic do
 
   @behaviour CNS.Critics.Critic
 
-  alias CNS.{SNO, Evidence}
+  alias CNS.{Evidence, SNO}
 
   # Client API
 
@@ -261,42 +261,39 @@ defmodule CNS.Critics.Logic do
     end)
   end
 
+  defp check_entailment(%SNO{claim: _claim, evidence: []}),
+    do: {0.5, ["no_evidence: claim has no supporting evidence"]}
+
   defp check_entailment(%SNO{claim: claim, evidence: evidence}) do
-    # Check if evidence logically supports the claim
-    if Enum.empty?(evidence) do
-      {0.5, ["no_evidence: claim has no supporting evidence"]}
-    else
-      # Calculate support score based on evidence validity
-      support_scores = Enum.map(evidence, & &1.validity)
-      avg_support = Enum.sum(support_scores) / length(support_scores)
+    support_scores = Enum.map(evidence, & &1.validity)
+    avg_support = Enum.sum(support_scores) / length(support_scores)
 
-      # Check for relevance (simple keyword overlap)
-      claim_words = extract_words(claim)
+    claim_words = extract_words(claim)
+    avg_relevance = calculate_avg_relevance(evidence, claim_words)
 
-      relevance_scores =
-        Enum.map(evidence, fn e ->
-          evidence_words = extract_words(e.content || "")
-          overlap = MapSet.intersection(claim_words, evidence_words) |> MapSet.size()
-          union = MapSet.union(claim_words, evidence_words) |> MapSet.size()
-          if union > 0, do: overlap / union, else: 0.0
-        end)
+    score = (avg_support * 0.6 + avg_relevance * 0.4) |> Float.round(4)
 
-      avg_relevance =
-        if Enum.empty?(relevance_scores),
-          do: 0.0,
-          else: Enum.sum(relevance_scores) / length(relevance_scores)
+    issues =
+      if score < 0.5,
+        do: ["weak_entailment: evidence weakly supports claim (#{Float.round(score, 2)})"],
+        else: []
 
-      score = (avg_support * 0.6 + avg_relevance * 0.4) |> Float.round(4)
+    {score, issues}
+  end
 
-      issues =
-        if score < 0.5 do
-          ["weak_entailment: evidence weakly supports claim (#{Float.round(score, 2)})"]
-        else
-          []
-        end
+  defp calculate_avg_relevance(evidence, claim_words) do
+    relevance_scores = Enum.map(evidence, &calculate_relevance(&1, claim_words))
 
-      {score, issues}
-    end
+    if Enum.empty?(relevance_scores),
+      do: 0.0,
+      else: Enum.sum(relevance_scores) / length(relevance_scores)
+  end
+
+  defp calculate_relevance(evidence, claim_words) do
+    evidence_words = extract_words(evidence.content || "")
+    overlap = MapSet.intersection(claim_words, evidence_words) |> MapSet.size()
+    union = MapSet.union(claim_words, evidence_words) |> MapSet.size()
+    if union > 0, do: overlap / union, else: 0.0
   end
 
   defp check_argument_structure(%SNO{claim: claim, evidence: evidence, children: children}) do

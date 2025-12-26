@@ -2,7 +2,7 @@ defmodule CNS.SNOTest do
   use ExUnit.Case, async: true
   use ExUnitProperties
 
-  alias CNS.{SNO, Evidence, Provenance}
+  alias CNS.{Evidence, Provenance, SNO}
 
   doctest CNS.SNO
 

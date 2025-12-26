@@ -151,27 +151,26 @@ defmodule CNS.Config do
   """
   @spec from_map(map()) :: {:ok, t()} | {:error, term()}
   def from_map(map) when is_map(map) do
-    try do
-      config = %__MODULE__{
-        max_iterations: Map.get(map, "max_iterations") || Map.get(map, :max_iterations) || 5,
-        convergence_threshold:
-          Map.get(map, "convergence_threshold") || Map.get(map, :convergence_threshold) || 0.85,
-        coherence_threshold:
-          Map.get(map, "coherence_threshold") || Map.get(map, :coherence_threshold) || 0.8,
-        evidence_threshold:
-          Map.get(map, "evidence_threshold") || Map.get(map, :evidence_threshold) || 0.7,
-        proposer: Map.get(map, "proposer") || Map.get(map, :proposer) || %{},
-        antagonist: Map.get(map, "antagonist") || Map.get(map, :antagonist) || %{},
-        synthesizer: Map.get(map, "synthesizer") || Map.get(map, :synthesizer) || %{},
-        telemetry_enabled: Map.get(map, "telemetry_enabled", true),
-        timeout: Map.get(map, "timeout") || Map.get(map, :timeout) || 30_000,
-        metadata: Map.get(map, "metadata") || Map.get(map, :metadata) || %{}
-      }
+    config = %__MODULE__{
+      max_iterations: get_field_or(map, :max_iterations, 5),
+      convergence_threshold: get_field_or(map, :convergence_threshold, 0.85),
+      coherence_threshold: get_field_or(map, :coherence_threshold, 0.8),
+      evidence_threshold: get_field_or(map, :evidence_threshold, 0.7),
+      proposer: get_field_or(map, :proposer, %{}),
+      antagonist: get_field_or(map, :antagonist, %{}),
+      synthesizer: get_field_or(map, :synthesizer, %{}),
+      telemetry_enabled: get_field_or(map, :telemetry_enabled, true),
+      timeout: get_field_or(map, :timeout, 30_000),
+      metadata: get_field_or(map, :metadata, %{})
+    }
 
-      {:ok, config}
-    rescue
-      e -> {:error, Exception.message(e)}
-    end
+    {:ok, config}
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
+  defp get_field_or(map, key, default) do
+    Map.get(map, to_string(key)) || Map.get(map, key) || default
   end
 
   # Private validation functions

@@ -1,7 +1,7 @@
 defmodule CNS.Validation.SemanticTest do
   use ExUnit.Case, async: true
   alias CNS.Validation.Semantic
-  alias CNS.Validation.Semantic.{ValidationResult, Config}
+  alias CNS.Validation.Semantic.{Config, ValidationResult}
 
   describe "ValidationResult struct" do
     test "can be constructed with all fields" do

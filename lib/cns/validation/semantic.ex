@@ -263,9 +263,7 @@ defmodule CNS.Validation.Semantic do
       validate_citations(generated_full_output, corpus, gold_evidence_ids)
 
     # Short circuit if citations fail (hard gate)
-    if not citation_valid do
-      failed_result(citation_valid, cited_ids, missing_ids)
-    else
+    if citation_valid do
       # Stage 2: Entailment (NLI model or fallback)
       entailment_score = compute_entailment(generated_claim, corpus, cited_ids)
       entailment_pass = entailment_score >= config.entailment_threshold
@@ -293,6 +291,8 @@ defmodule CNS.Validation.Semantic do
         schema_valid: true,
         schema_errors: []
       }
+    else
+      failed_result(citation_valid, cited_ids, missing_ids)
     end
   end
 

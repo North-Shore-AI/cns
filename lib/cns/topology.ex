@@ -15,7 +15,7 @@ defmodule CNS.Topology do
   @type graph_like :: Graph.t() | map() | [SNO.t()]
 
   @doc """
-  Build a directed `Graph.t/0` from a list of SNOs or an existing graph-like
+  Build a directed Graph.t from a list of SNOs or an existing graph-like
   structure (graph struct or adjacency map).
   """
   @spec build_graph(graph_like()) :: Graph.t()
@@ -79,8 +79,8 @@ defmodule CNS.Topology do
   @doc """
   Check if the graph is a DAG.
   """
-  @spec is_dag?(graph_like()) :: boolean()
-  def is_dag?(input), do: input |> build_graph() |> Graph.is_acyclic?()
+  @spec dag?(graph_like()) :: boolean()
+  def dag?(input), do: input |> build_graph() |> Graph.is_acyclic?()
 
   @doc """
   Depth of the graph (longest path length).
@@ -267,18 +267,18 @@ defmodule CNS.Topology do
     if Map.has_key?(visited, node) do
       0
     else
-      children = Graph.out_neighbors(graph, node)
+      calculate_max_child_depth(graph, node, Map.put(visited, node, true))
+    end
+  end
 
-      if Enum.empty?(children) do
-        0
-      else
-        new_visited = Map.put(visited, node, true)
+  defp calculate_max_child_depth(graph, node, visited) do
+    children = Graph.out_neighbors(graph, node)
 
-        child_depths =
-          Enum.map(children, fn child -> max_depth_from(graph, child, new_visited) end)
-
-        1 + Enum.max(child_depths, fn -> 0 end)
-      end
+    if Enum.empty?(children) do
+      0
+    else
+      child_depths = Enum.map(children, fn child -> max_depth_from(graph, child, visited) end)
+      1 + Enum.max(child_depths, fn -> 0 end)
     end
   end
 

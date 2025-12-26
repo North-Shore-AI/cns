@@ -53,8 +53,8 @@ defmodule CNS.MixProject do
       {:uuid, "~> 1.1"},
       {:libgraph, "~> 0.16"},
       {:telemetry, "~> 1.2"},
-      {:ex_topology, path: "../ex_topology"},
-      {:gemini_ex, "~> 0.4", optional: true},
+      {:ex_topology, "~> 0.2.0"},
+      {:gemini_ex, "~> 0.8.6", optional: true},
       {:req, "~> 0.5", optional: true},
 
       # ML/NLP dependencies for semantic validation (optional)
@@ -85,7 +85,7 @@ defmodule CNS.MixProject do
         "Docs" => "https://hexdocs.pm/cns"
       },
       maintainers: ["North-Shore-AI"],
-      files: ~w(lib docs .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
+      files: ~w(lib docs .formatter.exs mix.exs README.md LICENSE CHANGELOG.md assets)
     ]
   end
 
@@ -95,6 +95,8 @@ defmodule CNS.MixProject do
       name: "CNS",
       source_ref: "v#{@version}",
       source_url: @source_url,
+      assets: %{"assets" => "assets"},
+      logo: "assets/cns.svg",
       extras: [
         "README.md",
         "docs/guides/getting_started.md",

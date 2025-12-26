@@ -58,20 +58,18 @@ defmodule CNS.Graph.Visualization do
     vertices_str =
       graph
       |> Graph.vertices()
-      |> Enum.map(fn v ->
+      |> Enum.map_join("\n", fn v ->
         labels = Graph.vertex_labels(graph, v)
         type = Keyword.get(labels, :type, :unknown)
         "  - #{v} (#{type})"
       end)
-      |> Enum.join("\n")
 
     edges_str =
       graph
       |> Graph.edges()
-      |> Enum.map(fn edge ->
+      |> Enum.map_join("\n", fn edge ->
         "  - #{edge.v1} --[#{edge.label || ""}]--> #{edge.v2}"
       end)
-      |> Enum.join("\n")
 
     """
     Graph Summary:
@@ -112,7 +110,7 @@ defmodule CNS.Graph.Visualization do
   defp format_dot_vertices(graph) do
     graph
     |> Graph.vertices()
-    |> Enum.map(fn v ->
+    |> Enum.map_join("\n", fn v ->
       labels = Graph.vertex_labels(graph, v)
       type = Keyword.get(labels, :type, :unknown)
       text = Keyword.get(labels, :text) || Keyword.get(labels, :content) || ""
@@ -130,13 +128,12 @@ defmodule CNS.Graph.Visualization do
       id = sanitize_id(v)
       ~s(  #{id} [label="#{display_text}", #{style}];)
     end)
-    |> Enum.join("\n")
   end
 
   defp format_dot_edges(graph) do
     graph
     |> Graph.edges()
-    |> Enum.map(fn edge ->
+    |> Enum.map_join("\n", fn edge ->
       v1 = sanitize_id(edge.v1)
       v2 = sanitize_id(edge.v2)
       label = edge.label || ""
@@ -152,13 +149,12 @@ defmodule CNS.Graph.Visualization do
 
       ~s(  #{v1} -> #{v2} [label="#{label}", #{style}];)
     end)
-    |> Enum.join("\n")
   end
 
   defp format_mermaid_vertices(graph) do
     graph
     |> Graph.vertices()
-    |> Enum.map(fn v ->
+    |> Enum.map_join("\n", fn v ->
       labels = Graph.vertex_labels(graph, v)
       type = Keyword.get(labels, :type, :unknown)
       text = Keyword.get(labels, :text) || Keyword.get(labels, :content) || to_string(v)
@@ -172,13 +168,12 @@ defmodule CNS.Graph.Visualization do
         _ -> "    #{id}[\"#{display_text}\"]"
       end
     end)
-    |> Enum.join("\n")
   end
 
   defp format_mermaid_edges(graph) do
     graph
     |> Graph.edges()
-    |> Enum.map(fn edge ->
+    |> Enum.map_join("\n", fn edge ->
       v1 = sanitize_mermaid_id(edge.v1)
       v2 = sanitize_mermaid_id(edge.v2)
       label = edge.label || ""
@@ -194,7 +189,6 @@ defmodule CNS.Graph.Visualization do
 
       "    #{v1} #{arrow} #{v2}"
     end)
-    |> Enum.join("\n")
   end
 
   defp sanitize_id(id) do

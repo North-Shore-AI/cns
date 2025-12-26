@@ -341,23 +341,8 @@ defmodule CNS.Topology.Adapter do
     beta_two = Map.get(invariants, :beta_two, 0)
 
     has_cycles = beta_one > 0
-
-    severity =
-      cond do
-        beta_one == 0 -> :none
-        beta_one <= 2 -> :mild
-        beta_one <= 5 -> :moderate
-        true -> :severe
-      end
-
-    topology_class =
-      cond do
-        beta_zero > 1 && beta_one == 0 -> :disconnected_acyclic
-        beta_zero > 1 && beta_one > 0 -> :disconnected_with_cycles
-        beta_zero == 1 && beta_one == 0 -> :connected_acyclic
-        beta_zero == 1 && beta_one > 0 -> :connected_with_cycles
-        true -> :unknown
-      end
+    severity = classify_cycle_severity(beta_one)
+    topology_class = classify_topology(beta_zero, beta_one)
 
     %{
       # Raw topological features
@@ -376,6 +361,21 @@ defmodule CNS.Topology.Adapter do
       interpretation: generate_text_interpretation(beta_zero, beta_one, beta_two)
     }
   end
+
+  defp classify_cycle_severity(0), do: :none
+  defp classify_cycle_severity(n) when n <= 2, do: :mild
+  defp classify_cycle_severity(n) when n <= 5, do: :moderate
+  defp classify_cycle_severity(_), do: :severe
+
+  defp classify_topology(beta_zero, beta_one) when beta_zero > 1 and beta_one == 0,
+    do: :disconnected_acyclic
+
+  defp classify_topology(beta_zero, beta_one) when beta_zero > 1 and beta_one > 0,
+    do: :disconnected_with_cycles
+
+  defp classify_topology(1, 0), do: :connected_acyclic
+  defp classify_topology(1, beta_one) when beta_one > 0, do: :connected_with_cycles
+  defp classify_topology(_, _), do: :unknown
 
   @doc """
   Interpret fragility scores from ex_topology.Embedding analysis.
@@ -607,13 +607,7 @@ defmodule CNS.Topology.Adapter do
         {:error, :no_encoder_available}
 
       encoder_module ->
-        embeddings =
-          Enum.map(snos, fn sno ->
-            case extract_or_generate(sno, encoder_module, cache) do
-              {:ok, emb} -> emb
-              {:error, reason} -> {:error, reason}
-            end
-          end)
+        embeddings = Enum.map(snos, &generate_sno_embedding(&1, encoder_module, cache))
 
         if Enum.any?(embeddings, &match?({:error, _}, &1)) do
           errors = Enum.filter(embeddings, &match?({:error, _}, &1))
@@ -627,6 +621,13 @@ defmodule CNS.Topology.Adapter do
   defp extract_all_embeddings(snos, {:encoder, encoder_module}, opts) do
     opts_with_encoder = Keyword.put(opts, :encoder, encoder_module)
     extract_all_embeddings(snos, :generate, opts_with_encoder)
+  end
+
+  defp generate_sno_embedding(sno, encoder_module, cache) do
+    case extract_or_generate(sno, encoder_module, cache) do
+      {:ok, emb} -> emb
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp extract_single_embedding(%SNO{} = sno, :metadata, _opts) do
@@ -661,41 +662,30 @@ defmodule CNS.Topology.Adapter do
   end
 
   defp extract_or_generate(sno, encoder_module, cache) do
-    # Try cache first
-    case extract_single_embedding(sno, :metadata, []) do
-      {:ok, embedding} ->
-        {:ok, embedding}
+    with {:error, :no_cached_embedding} <- extract_single_embedding(sno, :metadata, []),
+         {:ok, embedding} <- generate_embedding(sno, encoder_module) do
+      if cache do
+        Logger.debug("Generated embedding for SNO #{sno.id}")
+      end
 
-      {:error, :no_cached_embedding} ->
-        # Generate new embedding
-        case generate_embedding(sno, encoder_module) do
-          {:ok, embedding} ->
-            if cache do
-              # Cache for future use (mutation happens outside this function)
-              Logger.debug("Generated embedding for SNO #{sno.id}")
-            end
-
-            {:ok, embedding}
-
-          {:error, reason} ->
-            {:error, reason}
-        end
+      {:ok, embedding}
+    else
+      {:ok, embedding} -> {:ok, embedding}
+      {:error, reason} -> {:error, reason}
     end
   end
 
   defp generate_embedding(%SNO{claim: claim}, encoder_module) do
-    try do
-      case encoder_module.encode(claim) do
-        {:ok, embedding} -> {:ok, embedding}
-        embedding when is_list(embedding) -> {:ok, embedding}
-        %Nx.Tensor{} = tensor -> {:ok, Nx.to_flat_list(tensor)}
-        _ -> {:error, :invalid_encoder_response}
-      end
-    rescue
-      e ->
-        Logger.error("Embedding generation failed: #{Exception.message(e)}")
-        {:error, {:generation_failed, Exception.message(e)}}
+    case encoder_module.encode(claim) do
+      {:ok, embedding} -> {:ok, embedding}
+      embedding when is_list(embedding) -> {:ok, embedding}
+      %Nx.Tensor{} = tensor -> {:ok, Nx.to_flat_list(tensor)}
+      _ -> {:error, :invalid_encoder_response}
     end
+  rescue
+    e ->
+      Logger.error("Embedding generation failed: #{Exception.message(e)}")
+      {:error, {:generation_failed, Exception.message(e)}}
   end
 
   defp extract_embedding_dimension(%SNO{metadata: metadata}) do

@@ -39,6 +39,7 @@ defmodule CNS.Topology.Persistence do
   """
 
   alias CNS.SNO
+  alias CNS.Topology.Adapter
   alias ExTopology.Diagram
 
   require Logger
@@ -151,7 +152,7 @@ defmodule CNS.Topology.Persistence do
     Logger.debug("Computing persistent homology for #{length(snos)} claims")
 
     # Convert SNOs to embeddings via Adapter
-    embeddings = CNS.Topology.Adapter.sno_embeddings(snos, adapter_opts)
+    embeddings = Adapter.sno_embeddings(snos, adapter_opts)
 
     # Build Vietoris-Rips filtration
     filtration =

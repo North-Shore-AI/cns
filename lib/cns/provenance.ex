@@ -118,21 +118,21 @@ defmodule CNS.Provenance do
   """
   @spec from_map(map()) :: {:ok, t()} | {:error, term()}
   def from_map(map) when is_map(map) do
-    try do
-      prov = %__MODULE__{
-        origin: parse_origin(Map.get(map, "origin") || Map.get(map, :origin)),
-        parent_ids: Map.get(map, "parent_ids") || Map.get(map, :parent_ids) || [],
-        transformation: Map.get(map, "transformation") || Map.get(map, :transformation) || "",
-        model_id: Map.get(map, "model_id") || Map.get(map, :model_id),
-        timestamp: parse_timestamp(Map.get(map, "timestamp") || Map.get(map, :timestamp)),
-        iteration: Map.get(map, "iteration") || Map.get(map, :iteration) || 0
-      }
+    prov = %__MODULE__{
+      origin: parse_origin(get_field(map, :origin)),
+      parent_ids: get_field(map, :parent_ids) || [],
+      transformation: get_field(map, :transformation) || "",
+      model_id: get_field(map, :model_id),
+      timestamp: parse_timestamp(get_field(map, :timestamp)),
+      iteration: get_field(map, :iteration) || 0
+    }
 
-      {:ok, prov}
-    rescue
-      e -> {:error, Exception.message(e)}
-    end
+    {:ok, prov}
+  rescue
+    e -> {:error, Exception.message(e)}
   end
+
+  defp get_field(map, key), do: Map.get(map, to_string(key)) || Map.get(map, key)
 
   @doc """
   Check if provenance indicates a synthesis operation.
@@ -140,16 +140,16 @@ defmodule CNS.Provenance do
   ## Examples
 
       iex> prov = CNS.Provenance.new(:synthesizer)
-      iex> CNS.Provenance.is_synthesis?(prov)
+      iex> CNS.Provenance.synthesis?(prov)
       true
 
       iex> prov = CNS.Provenance.new(:proposer)
-      iex> CNS.Provenance.is_synthesis?(prov)
+      iex> CNS.Provenance.synthesis?(prov)
       false
   """
-  @spec is_synthesis?(t()) :: boolean()
-  def is_synthesis?(%__MODULE__{origin: :synthesizer}), do: true
-  def is_synthesis?(_), do: false
+  @spec synthesis?(t()) :: boolean()
+  def synthesis?(%__MODULE__{origin: :synthesizer}), do: true
+  def synthesis?(_), do: false
 
   @doc """
   Get the depth of derivation (number of parents in chain).

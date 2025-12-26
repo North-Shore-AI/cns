@@ -13,8 +13,8 @@ defmodule CNS.Agents.Pipeline do
       true
   """
 
-  alias CNS.{SNO, Config}
-  alias CNS.Agents.{Proposer, Antagonist, Synthesizer}
+  alias CNS.Agents.{Antagonist, Proposer, Synthesizer}
+  alias CNS.{Config, SNO}
 
   @type pipeline_result :: %{
           final_synthesis: SNO.t(),

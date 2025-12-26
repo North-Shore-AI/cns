@@ -15,7 +15,7 @@ defmodule CNS.Graph.Builder do
       true
   """
 
-  alias CNS.{SNO, Evidence}
+  alias CNS.{Evidence, SNO}
 
   @type vertex_id :: String.t()
   @type edge_label :: :supports | :cites | :contradicts | :child_of

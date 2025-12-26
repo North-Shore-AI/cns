@@ -16,7 +16,7 @@ defmodule CNS.Metrics do
   - Mean entailment >= 0.50
   """
 
-  alias CNS.{SNO, Evidence, Challenge}
+  alias CNS.{Challenge, Evidence, SNO}
 
   @doc """
   Calculate overall quality score for a synthesis result.
@@ -189,20 +189,15 @@ defmodule CNS.Metrics do
       1.0
   """
   @spec schema_compliance([SNO.t()]) :: float()
-  def schema_compliance(snos) when is_list(snos) do
-    if Enum.empty?(snos) do
-      1.0
-    else
-      valid_count =
-        Enum.count(snos, fn sno ->
-          case SNO.validate(sno) do
-            {:ok, _} -> true
-            _ -> false
-          end
-        end)
+  def schema_compliance([]), do: 1.0
 
-      Float.round(valid_count / length(snos), 4)
-    end
+  def schema_compliance(snos) when is_list(snos) do
+    valid_count = Enum.count(snos, &valid_sno?/1)
+    Float.round(valid_count / length(snos), 4)
+  end
+
+  defp valid_sno?(sno) do
+    match?({:ok, _}, SNO.validate(sno))
   end
 
   @doc """
@@ -306,8 +301,7 @@ defmodule CNS.Metrics do
     |> String.downcase()
     |> String.replace(~r/[^\w\s]/, "")
     |> String.split(~r/\s+/, trim: true)
-    |> Enum.reject(&(&1 in stop_words))
-    |> Enum.reject(&(String.length(&1) < 3))
+    |> Enum.reject(&(&1 in stop_words or String.length(&1) < 3))
   end
 
   defp term_overlap(terms1, terms2) do

@@ -95,16 +95,16 @@ defmodule CNS.ProvenanceTest do
     end
   end
 
-  describe "is_synthesis?/1" do
+  describe "synthesis?/1" do
     test "returns true for synthesizer origin" do
       prov = Provenance.new(:synthesizer)
-      assert Provenance.is_synthesis?(prov)
+      assert Provenance.synthesis?(prov)
     end
 
     test "returns false for other origins" do
       for origin <- [:proposer, :antagonist, :external] do
         prov = Provenance.new(origin)
-        refute Provenance.is_synthesis?(prov)
+        refute Provenance.synthesis?(prov)
       end
     end
   end

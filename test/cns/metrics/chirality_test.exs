@@ -1,7 +1,7 @@
 defmodule CNS.Metrics.ChiralityTest do
   use ExUnit.Case, async: true
   alias CNS.Metrics.Chirality
-  alias CNS.Metrics.Chirality.{FisherRaoStats, ChiralityResult}
+  alias CNS.Metrics.Chirality.{ChiralityResult, FisherRaoStats}
 
   describe "build_fisher_rao_stats/2" do
     test "computes mean and inverse variance" do

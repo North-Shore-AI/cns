@@ -172,55 +172,57 @@ defmodule CNS.SNO do
   """
   @spec from_map(map()) :: {:ok, t()} | {:error, term()}
   def from_map(map) when is_map(map) do
-    try do
-      evidence =
-        (Map.get(map, "evidence") || Map.get(map, :evidence) || [])
-        |> Enum.map(fn e ->
-          case Evidence.from_map(e) do
-            {:ok, ev} -> ev
-            _ -> nil
-          end
-        end)
-        |> Enum.reject(&is_nil/1)
+    sno = %__MODULE__{
+      id: get_field(map, :id) || UUID.uuid4(),
+      claim: get_field(map, :claim),
+      evidence: parse_evidence_list(get_field(map, :evidence)),
+      confidence: parse_float(get_field(map, :confidence) || 0.5),
+      provenance: parse_provenance(get_field(map, :provenance)),
+      metadata: get_field(map, :metadata) || %{},
+      children: parse_children_list(get_field(map, :children)),
+      synthesis_history: get_field(map, :synthesis_history) || []
+    }
 
-      provenance =
-        case Map.get(map, "provenance") || Map.get(map, :provenance) do
-          nil ->
-            nil
+    {:ok, sno}
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
 
-          p ->
-            case Provenance.from_map(p) do
-              {:ok, prov} -> prov
-              _ -> nil
-            end
-        end
+  defp get_field(map, key), do: Map.get(map, to_string(key)) || Map.get(map, key)
 
-      children =
-        (Map.get(map, "children") || Map.get(map, :children) || [])
-        |> Enum.map(fn c ->
-          case from_map(c) do
-            {:ok, child} -> child
-            _ -> nil
-          end
-        end)
-        |> Enum.reject(&is_nil/1)
+  defp parse_evidence_list(nil), do: []
 
-      sno = %__MODULE__{
-        id: Map.get(map, "id") || Map.get(map, :id) || UUID.uuid4(),
-        claim: Map.get(map, "claim") || Map.get(map, :claim),
-        evidence: evidence,
-        confidence: parse_float(Map.get(map, "confidence") || Map.get(map, :confidence) || 0.5),
-        provenance: provenance,
-        metadata: Map.get(map, "metadata") || Map.get(map, :metadata) || %{},
-        children: children,
-        synthesis_history:
-          Map.get(map, "synthesis_history") || Map.get(map, :synthesis_history) || []
-      }
+  defp parse_evidence_list(list) when is_list(list) do
+    list
+    |> Enum.map(fn e ->
+      case Evidence.from_map(e) do
+        {:ok, ev} -> ev
+        _ -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
 
-      {:ok, sno}
-    rescue
-      e -> {:error, Exception.message(e)}
+  defp parse_provenance(nil), do: nil
+
+  defp parse_provenance(p) do
+    case Provenance.from_map(p) do
+      {:ok, prov} -> prov
+      _ -> nil
     end
+  end
+
+  defp parse_children_list(nil), do: []
+
+  defp parse_children_list(list) when is_list(list) do
+    list
+    |> Enum.map(fn c ->
+      case from_map(c) do
+        {:ok, child} -> child
+        _ -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
   end
 
   @doc """
@@ -234,9 +236,8 @@ defmodule CNS.SNO do
   """
   @spec from_json(String.t()) :: {:ok, t()} | {:error, term()}
   def from_json(json) when is_binary(json) do
-    with {:ok, map} <- Jason.decode(json),
-         {:ok, sno} <- from_map(map) do
-      {:ok, sno}
+    with {:ok, map} <- Jason.decode(json) do
+      from_map(map)
     end
   end
 

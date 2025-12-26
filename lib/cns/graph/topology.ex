@@ -21,8 +21,8 @@ defmodule CNS.Graph.Topology do
   @doc """
   Check if graph is acyclic (no circular reasoning).
   """
-  @spec is_acyclic?(Graph.t()) :: boolean()
-  def is_acyclic?(graph) do
+  @spec acyclic?(Graph.t()) :: boolean()
+  def acyclic?(graph) do
     Graph.is_acyclic?(graph)
   end
 
@@ -81,31 +81,22 @@ defmodule CNS.Graph.Topology do
   """
   @spec longest_path_length(Graph.t()) :: non_neg_integer()
   def longest_path_length(graph) do
-    if not Graph.is_acyclic?(graph) do
-      # Graph has cycles, return -1 to indicate infinite
-      -1
-    else
-      vertices = Graph.vertices(graph)
-
-      if Enum.empty?(vertices) do
-        0
-      else
-        # Find roots (vertices with no incoming edges)
-        roots =
-          Enum.filter(vertices, fn v ->
-            Graph.in_degree(graph, v) == 0
-          end)
-
-        if Enum.empty?(roots) do
-          0
-        else
-          # BFS from each root to find longest path
-          roots
-          |> Enum.map(fn root -> longest_path_from(graph, root) end)
-          |> Enum.max(fn -> 0 end)
-        end
-      end
+    cond do
+      not Graph.is_acyclic?(graph) -> -1
+      Graph.num_vertices(graph) == 0 -> 0
+      true -> compute_longest_path(graph)
     end
+  end
+
+  defp compute_longest_path(graph) do
+    roots = Enum.filter(Graph.vertices(graph), fn v -> Graph.in_degree(graph, v) == 0 end)
+    if Enum.empty?(roots), do: 0, else: find_max_path_from_roots(graph, roots)
+  end
+
+  defp find_max_path_from_roots(graph, roots) do
+    roots
+    |> Enum.map(fn root -> longest_path_from(graph, root) end)
+    |> Enum.max(fn -> 0 end)
   end
 
   @doc """
@@ -141,10 +132,10 @@ defmodule CNS.Graph.Topology do
   @spec has_property?(Graph.t(), atom()) :: boolean()
   def has_property?(graph, property) do
     case property do
-      :acyclic -> is_acyclic?(graph)
+      :acyclic -> acyclic?(graph)
       :connected -> num_components(graph) == 1
-      :tree -> is_tree?(graph)
-      :dag -> is_acyclic?(graph)
+      :tree -> tree?(graph)
+      :dag -> acyclic?(graph)
       _ -> false
     end
   end
@@ -161,7 +152,7 @@ defmodule CNS.Graph.Topology do
       vertices: Graph.num_vertices(graph),
       edges: Graph.num_edges(graph),
       density: density(graph),
-      is_acyclic: is_acyclic?(graph),
+      is_acyclic: acyclic?(graph),
       components: num_components(graph),
       cycles: length(find_cycles(graph)),
       betti_b0: betti.b0,
@@ -179,26 +170,23 @@ defmodule CNS.Graph.Topology do
   end
 
   @spec do_longest_path(Graph.t(), any(), map(), non_neg_integer()) :: non_neg_integer()
-  defp do_longest_path(graph, current, visited, depth) when is_map(visited) do
-    if Map.has_key?(visited, current) do
-      depth
-    else
-      new_visited = Map.put(visited, current, true)
-      neighbors = Graph.out_neighbors(graph, current)
+  defp do_longest_path(_graph, current, visited, depth) when is_map_key(visited, current), do: depth
 
-      if Enum.empty?(neighbors) do
-        depth
-      else
-        neighbors
-        |> Enum.map(fn neighbor ->
-          do_longest_path(graph, neighbor, new_visited, depth + 1)
-        end)
-        |> Enum.max()
-      end
-    end
+  defp do_longest_path(graph, current, visited, depth) do
+    new_visited = Map.put(visited, current, true)
+    neighbors = Graph.out_neighbors(graph, current)
+    find_longest_neighbor_path(graph, neighbors, new_visited, depth)
   end
 
-  defp is_tree?(graph) do
+  defp find_longest_neighbor_path(_graph, [], _visited, depth), do: depth
+
+  defp find_longest_neighbor_path(graph, neighbors, visited, depth) do
+    neighbors
+    |> Enum.map(fn neighbor -> do_longest_path(graph, neighbor, visited, depth + 1) end)
+    |> Enum.max()
+  end
+
+  defp tree?(graph) do
     TopoGraph.tree?(graph)
   end
 end

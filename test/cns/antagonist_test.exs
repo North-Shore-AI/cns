@@ -1,8 +1,8 @@
 defmodule CNS.AntagonistTest do
   use ExUnit.Case, async: true
 
-  alias CNS.{SNO, Challenge, Evidence, Config}
   alias CNS.Agents.Antagonist
+  alias CNS.{Challenge, Config, Evidence, SNO}
 
   describe "challenge/2" do
     test "generates challenges for a claim" do
@@ -49,7 +49,7 @@ defmodule CNS.AntagonistTest do
           String.contains?(c.description, "absolute term")
         end)
 
-      assert length(contradictory) == 0
+      assert Enum.empty?(contradictory)
     end
   end
 
@@ -83,7 +83,7 @@ defmodule CNS.AntagonistTest do
           String.contains?(c.description, "low validity")
         end)
 
-      assert length(low_validity_gaps) == 0
+      assert Enum.empty?(low_validity_gaps)
     end
   end
 
@@ -136,7 +136,7 @@ defmodule CNS.AntagonistTest do
       sno = SNO.new("Uncertain claim", id: "test-id", confidence: 0.5)
       alternatives = Antagonist.generate_alternatives(sno)
 
-      assert length(alternatives) == 0
+      assert Enum.empty?(alternatives)
     end
   end
 
